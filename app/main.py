@@ -604,25 +604,31 @@ async def call_llm(system_prompt: str, user_message: str) -> str:
 # ===== 主对话接口 =====
 @app.post("/tts")
 async def tts(req: TTSRequest):
-    """
-    文本转语音：
-    输入任意文本（建议传日文部分），返回 mp3 音频。
-    """
     if not (LLM_API_KEY and LLM_TTS_MODEL):
         raise HTTPException(status_code=500, detail="TTS not configured")
 
     try:
-        # 调用 OpenAI TTS（Audio API）
         audio_response = client.audio.speech.create(
             model=LLM_TTS_MODEL,
             voice=req.voice,
             input=req.text,
         )
-        # 部分 SDK 返回对象带有 .to_bytes() / .read()，这里按 bytes 处理
-        audio_bytes = audio_response.read() if hasattr(audio_response, "read") else audio_response
+        audio_bytes = (
+            audio_response.read()
+            if hasattr(audio_response, "read")
+            else audio_response
+        )
         return Response(content=audio_bytes, media_type="audio/mpeg")
     except Exception as e:
+        msg = str(e)
+        if "insufficient_quota" in msg or "You exceeded your current quota" in msg:
+            # 专门给额度不足的友好提示
+            raise HTTPException(
+                status_code=402,
+                detail="当前语音额度不足，暂时只能使用文字学习功能。如需开启朗读功能，请为 API 充值或更换有额度的密钥。"
+            )
         raise HTTPException(status_code=500, detail=f"TTS failed: {e}")
+
 
 @app.post("/agent/chat", response_model=ChatResponse)
 async def agent_chat(req: ChatRequest):
