@@ -308,6 +308,20 @@ def render_playground_html() -> str:
 <div class="hint">
   大部分手机/浏览器支持日文语音。如果听不到，说明当前设备不支持或未安装日文语音。
 </div>
+<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+  <button id="clear-input" class="btn-secondary" style="flex:1;">
+    🧹 清空输入
+  </button>
+  <button id="prev-history" class="btn-secondary" style="flex:1;">
+    ⬅ 上一条
+  </button>
+  <button id="next-history" class="btn-secondary" style="flex:1;">
+    下一条 ➜
+  </button>
+</div>
+<div class="hint">
+  提示：历史仅在当前页面有效，用于快速回看/复用你刚才问过的场景。
+</div>
 
 
           <div class="reply-wrap">
