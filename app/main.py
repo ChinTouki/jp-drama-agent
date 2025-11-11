@@ -23,7 +23,7 @@ client = OpenAI(
 app = FastAPI()
 
 # ===== 每日免费额度（MVP） =====
-FREE_LIMIT_PER_DAY = 5  # 每个 user_id 每天免费 5 条
+FREE_LIMIT_PER_DAY = 30  # 每个 user_id 每天免费 5 条
 _usage: dict[str, dict] = {}  # {user_id: {"count": int, "reset": datetime}}
 
 
@@ -589,7 +589,7 @@ async def agent_chat(req: ChatRequest):
             "如症状严重，请提醒务必遵从日本医生与专业机构判断。\n"
             f"我的具体情况是：{req.message}"
         )
-        
+
     elif mode == "kansai":
         user_message = (
             "请用下面结构教我一个例子，通过对比标准日语和关西ことば来学习：\n"
