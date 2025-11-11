@@ -257,6 +257,7 @@ def playground():
             <option value="family">👨‍👩‍👧 家长 & 学校沟通｜ことの葉ファミリーサポート</option>
             <option value="parenting">👨‍👧 亲子沟通 & 教育｜ことの葉ペアレンティング</option>
             <option value="housing">🏡 租房·邻里·手续咨询｜ことの葉ライフサポート</option>
+            <option value="kansai">🌀 关西ことば入门｜ことの葉関西ことば</option>
             <option value="culture">📺 动漫·日剧·综艺·游戏｜ことの葉カルチャートーク</option>
             <option value="gossip">🗣 妈妈友·邻居·同事闲聊｜ことの葉ご近所トーク</option>
             <option value="comfort_soft">🌸 暖心陪练・柔｜ことの葉コンフォート・柔</option>
@@ -347,6 +348,7 @@ class ChatRequest(BaseModel):
         "medical",
         "housing",
         "travel",
+        "kansai",
         "culture",
         "gossip",
         "comfort_soft",
@@ -472,7 +474,21 @@ def build_system_prompt(mode: str) -> str:
             "教用户在机场、车站、餐厅、商店、药妆店、景点，用1-2句解决问题。\n"
             "输出：简单礼貌的日文句子＋平假名＋中文解释，优先好记好用。"
         )
-
+    if mode == "kansai":
+        return (
+            "你是「ことの葉関西ことば」，教用户在理解标准日语的基础上，"
+            "安全、有趣地接触关西地区（日语）口音和表达（以大阪周边为主）。\n"
+            "原则：\n"
+            "1. 先给【标准日语版本】，再给【关西说法】，不只给方言，避免听不懂。\n"
+            "2. 说明哪些适合朋友之间・关西本地日常，哪些不适合对上司、客户或正式场合。\n"
+            "3. 不强化刻板印象，不教攻击性或过度粗鲁表达。\n"
+            "输出结构：\n"
+            "【标准日语】一句自然说法。\n"
+            "【关西版本】对应的关西ことば说法。\n"
+            "【读音（平假名）】以关西版本为主，标注读音。\n"
+            "【中文解释】说明语气差异、适用场景，提醒使用边界。\n"
+            "适合作为“通过关西腔增加听感与趣味”的进阶学习入口。"
+        )
     # 10. 动漫·日剧·综艺·游戏
     if mode == "culture":
         return (
@@ -572,6 +588,17 @@ async def agent_chat(req: ChatRequest):
             "【4. 常见词汇补充】1-5个相关单词/短语：日文＋平假名＋中文。\n"
             "如症状严重，请提醒务必遵从日本医生与专业机构判断。\n"
             f"我的具体情况是：{req.message}"
+        )
+        
+    elif mode == "kansai":
+        user_message = (
+            "请用下面结构教我一个例子，通过对比标准日语和关西ことば来学习：\n"
+            "【标准日语】\n"
+            "【关西版本】\n"
+            "【读音（平假名）】（以关西版本为主）\n"
+            "【中文解释】说明差异、语气、适合对谁说，提醒不要在正式场合乱用。\n"
+            "请使用自然、真实但不过分粗鲁的关西表达，只用虚构/一般场景，不针对真实个人。\n"
+            f"我的具体内容是：{req.message}"
         )
 
     elif mode == "culture":
