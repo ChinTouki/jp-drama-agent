@@ -442,14 +442,20 @@ def render_playground_html() -> str:
 
   // ===== 只取含假名的行：只读日文，不读中文解释 =====
   function extractJapaneseLines(text) {
-    const lines = text.split(/\r?\n/);
-    const jaLines = lines
-      .map(line => line.trim())
-      .filter(line => /[\u3040-\u30FF]/.test(line)); // 含平假名/片假名
+  const lines = text.split(/\r?\n/);
 
-    if (!jaLines.length) return "";
-    return jaLines.join(" ").replace(/\s+/g, " ").trim();
-  }
+  const jaLines = lines
+    .map(line => line.trim())
+    .filter(line => {
+      // 只要这一行里出现平假名、片假名或汉字，就认为是日文相关内容
+      return /[ぁ-んァ-ン一-龯]/.test(line);
+    });
+
+  if (!jaLines.length) return "";
+
+  return jaLines.join(" ").replace(/\s+/g, " ").trim();
+}
+
 
   // ===== 本机朗读（日语），再按一次停止 =====
   let isSpeakingLocal = false;
