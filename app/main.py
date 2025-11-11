@@ -99,9 +99,11 @@ def playground():
 
       <label>模式 Mode</label>
       <select id="mode">
-        <option value="tutor">日剧日语老师（解释表达、语法、口语）</option>
-        <option value="otaku_waifu">宅系女友聊天（治愈陪聊＋顺手教日语）</option>
-      </select>
+  <option value="tutor">日剧日语老师（解释表达、语法、口语）</option>
+  <option value="otaku_waifu">宅系女友聊天（治愈陪聊＋顺手教日语）</option>
+  <option value="otaku_boyfriend">宅系男友聊天（温柔学长/男友感＋顺手教日语）</option>
+</select>
+
 
       <label>你的输入</label>
       <textarea id="input" rows="3"
