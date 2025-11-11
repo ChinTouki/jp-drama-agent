@@ -441,19 +441,21 @@ def render_playground_html() -> str:
   }
 
   // ===== 只取含假名的行：只读日文，不读中文解释 =====
-  function extractJapaneseLines(text) {
-  const lines = text.split(/\r?\n/);
+  ffunction extractJapaneseLines(text) {
+  // 在 Python 三引号里要用 \\r\\n，浏览器里会还原成 \r\n
+  const lines = text.split(/\\r?\\n/);
 
   const jaLines = lines
     .map(line => line.trim())
     .filter(line => {
-      // 只要这一行里出现平假名、片假名或汉字，就认为是日文相关内容
+      // 行内含有平假名/片假名/常用汉字，就认为是要朗读的日文内容
       return /[ぁ-んァ-ン一-龯]/.test(line);
     });
 
   if (!jaLines.length) return "";
 
-  return jaLines.join(" ").replace(/\s+/g, " ").trim();
+  // 同理这里用 \\s，在浏览器里会变成 \s
+  return jaLines.join(" ").replace(/\\s+/g, " ").trim();
 }
 
 
