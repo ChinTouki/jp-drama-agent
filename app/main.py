@@ -425,7 +425,7 @@ def render_playground_html() -> str:
 
   // ===== 从回复中提取日文行：只读这些 =====
   function extractJapaneseLines(text) {
-    const lines = text.split('\n');
+    const lines = text.split('\\n');
     var jaLines = [];
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i].trim();
