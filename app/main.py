@@ -3,7 +3,7 @@ from typing import Literal, Optional
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -14,6 +14,8 @@ load_dotenv()
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_API_BASE = os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4.1-mini")
+LLM_TTS_MODEL = os.getenv("LLM_TTS_MODEL", "gpt-4o-mini-tts")
+
 
 client = OpenAI(
     api_key=LLM_API_KEY,
@@ -273,6 +275,11 @@ def playground():
 
           <button id="send">发送给 ことの葉 ▶</button>
           <div class="hint">快捷键：Ctrl / ⌘ + Enter 发送</div>
+          <button id="speak" style="margin-top:6px;background:#4b5563;">🔊 朗读当前回复（日文为主）</button>
+<div class="hint">如果当前回复里有日文例句，会自动转成语音，方便跟读。</div>
+
+<audio id="audio" style="margin-top:6px;width:100%;" controls></audio>
+
 
           <div class="reply-wrap">
             <div class="reply-label">
@@ -295,6 +302,48 @@ def playground():
         const inputEl = document.getElementById("input");
         const modeEl = document.getElementById("mode");
         const replyEl = document.getElementById("reply");
+        const speakBtn = document.getElementById("speak");
+const audioEl = document.getElementById("audio");
+async function speak() {
+  const text = replyEl.textContent.trim();
+  if (!text) {
+    replyEl.textContent = "请先生成一条回复，再点击朗读。";
+    return;
+  }
+
+  speakBtn.disabled = true;
+  speakBtn.textContent = "生成语音中…";
+
+  try {
+    const res = await fetch("/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,       // 简单做法：整个回复交给 TTS；以后你可以只截取日文行
+        voice: "alloy"
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      replyEl.textContent = "语音生成失败：" + (err.detail || res.status);
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    audioEl.src = url;
+    audioEl.play();
+  } catch (e) {
+    replyEl.textContent = "语音请求出错：" + e;
+  } finally {
+    speakBtn.disabled = false;
+    speakBtn.textContent = "🔊 朗读当前回复（日文为主）";
+  }
+}
+
+speakBtn.addEventListener("click", speak);
+
 
         async function send() {
           const text = inputEl.value.trim();
@@ -365,6 +414,9 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "alloy"  # 可选：用同一个默认声音
 
 
 # ===== 人格设定 =====
@@ -550,6 +602,27 @@ async def call_llm(system_prompt: str, user_message: str) -> str:
 
 
 # ===== 主对话接口 =====
+@app.post("/tts")
+async def tts(req: TTSRequest):
+    """
+    文本转语音：
+    输入任意文本（建议传日文部分），返回 mp3 音频。
+    """
+    if not (LLM_API_KEY and LLM_TTS_MODEL):
+        raise HTTPException(status_code=500, detail="TTS not configured")
+
+    try:
+        # 调用 OpenAI TTS（Audio API）
+        audio_response = client.audio.speech.create(
+            model=LLM_TTS_MODEL,
+            voice=req.voice,
+            input=req.text,
+        )
+        # 部分 SDK 返回对象带有 .to_bytes() / .read()，这里按 bytes 处理
+        audio_bytes = audio_response.read() if hasattr(audio_response, "read") else audio_response
+        return Response(content=audio_bytes, media_type="audio/mpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS failed: {e}")
 
 @app.post("/agent/chat", response_model=ChatResponse)
 async def agent_chat(req: ChatRequest):
