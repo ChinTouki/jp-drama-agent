@@ -299,39 +299,19 @@ def render_playground_html() -> str:
           <textarea id="input"
             placeholder="例如：\n- 明天第一次去日本公司上班想自我介绍。\n- 孩子咳嗽一周了，想在医院说清楚。\n- 在大阪打工想学自然的关西ことば问候客人。"></textarea>
 
-          <button id="send">发送给 ことの葉 ▶ 生成日语表达</button>
-          <button id="speak" class="btn-secondary">🔊 朗读当前回复（需要已开通语音额度）</button>
-          <button id="speak-local" class="btn-secondary">
-           📱 使用本机朗读（日语示范发音，免密钥）
-          </button>
+<button id="send">发送给 ことの葉 ▶ 生成日语表达</button>
+<button id="speak" class="btn-secondary">🔊 朗读当前回复（需要已开通语音额度）</button>
+<button id="speak-local" class="btn-secondary">📱 使用本机朗读（日语示范发音，免密钥）</button>
 
-<div class="hint">
-  大部分手机/浏览器支持日文语音。如果听不到，说明当前设备不支持或未安装日文语音。
-</div>
 <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
-  <button id="clear-input" class="btn-secondary" style="flex:1;">
-    🧹 清空输入
-  </button>
-  <button id="prev-history" class="btn-secondary" style="flex:1;">
-    ⬅ 上一条
-  </button>
-  <button id="next-history" class="btn-secondary" style="flex:1;">
-    下一条 ➜
-  </button>
-</div>
-<div class="hint">
-  提示：历史仅在当前页面有效，用于快速回看/复用你刚才问过的场景。
+  <button id="clear-input" class="btn-secondary" style="flex:1;">🧹 清空输入</button>
+  <button id="prev-history" class="btn-secondary" style="flex:1;">⬅ 上一条</button>
+  <button id="next-history" class="btn-secondary" style="flex:1;">下一条 ➜</button>
 </div>
 
+<div id="reply" class="reply-box">这里会出现针对你场景的日语表达建议。</div>
+<audio id="audio" controls></audio>
 
-          <div class="reply-wrap">
-            <div class="reply-label">
-              <span>ことの葉回复</span>
-              <span class="sub">日文句子＋平假名＋中文解释＋必要场景提示</span>
-            </div>
-            <div id="reply" class="reply-box">这里会出现针对你场景的日语表达建议。</div>
-            <audio id="audio" controls></audio>
-          </div>
 
           <div class="footer">
             <span>体验版每日调用有限制；医疗相关内容仅作语言示例，不替代专业诊疗。</span>
@@ -340,23 +320,24 @@ def render_playground_html() -> str:
         </div>
       </div>
 
-     <script>
+   <script>
+(function () {
   const chatEndpoint = "/agent/chat";
   const ttsEndpoint = "/tts";
 
   const sendBtn = document.getElementById("send");
-  const speakBtn = document.getElementById("speak");              // 云端 TTS（可选）
-  const speakLocalBtn = document.getElementById("speak-local");   // 本机朗读
-  const clearInputBtn = document.getElementById("clear-input");   // 清空输入
-  const prevBtn = document.getElementById("prev-history");        // 上一条
-  const nextBtn = document.getElementById("next-history");        // 下一条
+  const speakBtn = document.getElementById("speak");
+  const speakLocalBtn = document.getElementById("speak-local");
+  const clearInputBtn = document.getElementById("clear-input");
+  const prevBtn = document.getElementById("prev-history");
+  const nextBtn = document.getElementById("next-history");
 
   const inputEl = document.getElementById("input");
   const modeEl = document.getElementById("mode");
   const replyEl = document.getElementById("reply");
   const audioEl = document.getElementById("audio");
 
-  const history = [];     // { mode, input, reply }
+  const history = []; // { mode, input, reply }
   let historyIndex = -1;
   let isSpeakingLocal = false;
 
@@ -369,12 +350,10 @@ def render_playground_html() -> str:
     replyEl.textContent = "考え中… / 正在为你组织最自然的表达…";
 
     if (audioEl) audioEl.removeAttribute("src");
-    if ("speechSynthesis" in window) {
+    if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
       isSpeakingLocal = false;
-      if (speakLocalBtn) {
-        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
-      }
+      resetLocalSpeakButton();
     }
 
     if (sendBtn) sendBtn.disabled = true;
@@ -385,7 +364,7 @@ def render_playground_html() -> str:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: "web-playground",
-          mode,
+          mode: mode,
           message: text
         })
       });
@@ -394,7 +373,7 @@ def render_playground_html() -> str:
       const reply = data.reply || JSON.stringify(data, null, 2);
       replyEl.textContent = reply;
 
-      history.push({ mode, input: text, reply });
+      history.push({ mode: mode, input: text, reply: reply });
       historyIndex = history.length - 1;
       updateHistoryButtons();
     } catch (e) {
@@ -404,7 +383,7 @@ def render_playground_html() -> str:
     }
   }
 
-  // ===== 云端 TTS（将来有额度再用） =====
+  // ===== 云端 TTS（你有额度时可启用） =====
   async function speak() {
     if (!speakBtn) return;
 
@@ -421,11 +400,11 @@ def render_playground_html() -> str:
       const res = await fetch(ttsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: "alloy" })
+        body: JSON.stringify({ text: text, voice: "alloy" })
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
+        const err = await res.json().catch(function () { return {}; });
         replyEl.textContent = "语音生成失败：" + (err.detail || res.status);
         return;
       }
@@ -444,47 +423,48 @@ def render_playground_html() -> str:
     }
   }
 
-  // ===== 从回复中提取日文行，只读这些 =====
+  // ===== 从回复中提取日文行：只读这些 =====
   function extractJapaneseLines(text) {
     const lines = text.split('\n');
-    const jaLines = [];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      // 含平假名/片假名/常用汉字就认为是日文相关
+    var jaLines = [];
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+      // 含平假名/片假名/汉字之一，就认为是日文相关
       if (/[ぁ-んァ-ン一-龯]/.test(line)) {
         jaLines.push(line);
       }
     }
-
     if (jaLines.length === 0) return "";
     return jaLines.join(' ');
   }
 
+  function resetLocalSpeakButton() {
+    if (speakLocalBtn) {
+      speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+    }
+  }
+
   // ===== 本机朗读：只读日文，再按一次停止 =====
   function speakLocal() {
-    if (!("speechSynthesis" in window)) {
+    if (!window.speechSynthesis) {
       replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
       return;
     }
 
-    // 正在读 → 再按一次 = 停止
     if (isSpeakingLocal) {
       window.speechSynthesis.cancel();
       isSpeakingLocal = false;
-      if (speakLocalBtn) {
-        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
-      }
+      resetLocalSpeakButton();
       return;
     }
 
-    const raw = replyEl.textContent.trim();
+    var raw = replyEl.textContent.trim();
     if (!raw) {
       replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
       return;
     }
 
-    const text = extractJapaneseLines(raw);
+    var text = extractJapaneseLines(raw);
     if (!text) {
       replyEl.textContent = "当前回复中没有可朗读的日文句子，请先生成包含日文的内容。";
       return;
@@ -492,11 +472,18 @@ def render_playground_html() -> str:
 
     window.speechSynthesis.cancel();
 
-    const utter = new SpeechSynthesisUtterance(text);
+    var utter = new SpeechSynthesisUtterance(text);
     utter.lang = "ja-JP";
 
-    const voices = window.speechSynthesis.getVoices();
-    const jpVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
+    var voices = window.speechSynthesis.getVoices();
+    var jpVoice = null;
+    for (var i = 0; i < voices.length; i++) {
+      var v = voices[i];
+      if (v.lang && v.lang.toLowerCase().indexOf("ja") === 0) {
+        jpVoice = v;
+        break;
+      }
+    }
     if (jpVoice) utter.voice = jpVoice;
 
     isSpeakingLocal = true;
@@ -504,18 +491,13 @@ def render_playground_html() -> str:
       speakLocalBtn.textContent = "⏹ 停止本机朗读";
     }
 
-    utter.onend = () => {
+    utter.onend = function () {
       isSpeakingLocal = false;
-      if (speakLocalBtn) {
-        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
-      }
+      resetLocalSpeakButton();
     };
-
-    utter.onerror = () => {
+    utter.onerror = function () {
       isSpeakingLocal = false;
-      if (speakLocalBtn) {
-        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
-      }
+      resetLocalSpeakButton();
     };
 
     window.speechSynthesis.speak(utter);
@@ -524,12 +506,10 @@ def render_playground_html() -> str:
   // ===== 清空输入 =====
   function clearInput() {
     if (inputEl) inputEl.value = "";
-    if ("speechSynthesis" in window) {
+    if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
       isSpeakingLocal = false;
-      if (speakLocalBtn) {
-        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
-      }
+      resetLocalSpeakButton();
     }
   }
 
@@ -543,19 +523,17 @@ def render_playground_html() -> str:
   function loadHistory(index) {
     if (index < 0 || index >= history.length) return;
     historyIndex = index;
-    const item = history[historyIndex];
+    var item = history[historyIndex];
 
     if (modeEl) modeEl.value = item.mode;
     if (inputEl) inputEl.value = item.input;
     replyEl.textContent = item.reply;
 
     if (audioEl) audioEl.removeAttribute("src");
-    if ("speechSynthesis" in window) {
+    if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
       isSpeakingLocal = false;
-      if (speakLocalBtn) {
-        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
-      }
+      resetLocalSpeakButton();
     }
 
     updateHistoryButtons();
@@ -573,7 +551,7 @@ def render_playground_html() -> str:
     }
   }
 
-  // ===== 事件绑定 =====
+  // ===== 绑定事件 =====
   if (sendBtn) sendBtn.addEventListener("click", send);
   if (speakBtn) speakBtn.addEventListener("click", speak);
   if (speakLocalBtn) speakLocalBtn.addEventListener("click", speakLocal);
@@ -582,7 +560,7 @@ def render_playground_html() -> str:
   if (nextBtn) nextBtn.addEventListener("click", showNext);
 
   if (inputEl) {
-    inputEl.addEventListener("keydown", (e) => {
+    inputEl.addEventListener("keydown", function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         send();
@@ -590,12 +568,12 @@ def render_playground_html() -> str:
     });
   }
 
-  // 加载语音列表（有的浏览器需要先调用一次）
-  if ("speechSynthesis" in window) {
+  if (window.speechSynthesis) {
     window.speechSynthesis.getVoices();
   }
 
   updateHistoryButtons();
+})();
 </script>
 
 
