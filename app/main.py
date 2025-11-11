@@ -6,14 +6,14 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# 本地加? .env；在?上 Render 用?境?量
+# 本地加载 .env；Render 上使用环境变量
 load_dotenv()
 
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_API_BASE = os.getenv("LLM_API_BASE", "https://api.openai.com/v1")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4.1-mini")
 
-# 使用官方 OpenAI SDK 客?端
+# OpenAI 官方 SDK 客户端
 client = OpenAI(
     api_key=LLM_API_KEY,
     base_url=LLM_API_BASE,
@@ -27,24 +27,9 @@ def read_root():
     return {"message": "JP Drama Agent API is running."}
 
 
-# ??：?看后端???到的 key / base / model（不泄露完整 key）
-@app.get("/debug/key-info")
-def debug_key_info():
-    if not LLM_API_KEY:
-        return {"has_key": False}
-    return {
-        "has_key": True,
-        "length": len(LLM_API_KEY),
-        "prefix": LLM_API_KEY[:7],   # 比如 sk-proj
-        "suffix": LLM_API_KEY[-4:],  # 最后4位，?自己?一下
-        "base": LLM_API_BASE,
-        "model": LLM_MODEL,
-    }
-
-
 class ChatRequest(BaseModel):
     user_id: str
-    mode: Literal["tutor"] = "tutor"
+    mode: Literal["tutor", "otaku_waifu"] = "tutor"
     message: str
     episode: Optional[int] = None
     line_id: Optional[str] = None
@@ -57,16 +42,22 @@ class ChatResponse(BaseModel):
 def build_system_prompt(mode: str) -> str:
     if mode == "tutor":
         return (
-            "?是??日?老?，用??自然的日?回答中文用?的??，"
-            "??地方用少量中文解?，?次?出?明有用的表?。"
+            "你是专业日语老师，用户是中文母语者。"
+            "用自然简洁的日语回答，必要时用少量中文解释。"
+            "每次给1-3个实用表达，结合日本日常和日剧场景教学。"
         )
-    return "?是一个友好的日?学?助手。"
+    if mode == "otaku_waifu":
+        return (
+            "你是可爱、懂ACG文化的宅系女友角色。"
+            "主要用口语日语聊天，语气轻松黏人但健康边界明确，"
+            "可以顺手教简单日语表达，不输出违规或露骨内容。"
+        )
+    return "你是一个友好的日语学习助手。"
 
 
 async def call_llm(system_prompt: str, user_message: str) -> str:
     if not (LLM_API_KEY and LLM_MODEL):
         raise HTTPException(status_code=500, detail="LLM configuration missing")
-
     try:
         completion = client.chat.completions.create(
             model=LLM_MODEL,
@@ -77,7 +68,6 @@ async def call_llm(system_prompt: str, user_message: str) -> str:
         )
         return completion.choices[0].message.content
     except Exception as e:
-        # 直接把??信息抛出去，方便?在 /docs 里看到真?原因
         raise HTTPException(status_code=500, detail=f"LLM request failed: {e}")
 
 
