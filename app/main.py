@@ -25,7 +25,7 @@ client = OpenAI(
 app = FastAPI()
 
 # ===== 每日免费额度（MVP） =====
-FREE_LIMIT_PER_DAY = 30  # 每个 user_id 每天免费 5 条
+FREE_LIMIT_PER_DAY = 10  # 每个 user_id 每天免费 5 条
 _usage: dict[str, dict] = {}  # {user_id: {"count": int, "reset": datetime}}
 
 
