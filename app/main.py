@@ -381,20 +381,38 @@ def render_playground_html() -> str:
     updateHistoryButtons();
   }
 
-  // 只抽取“平假名读音”来朗读
+  // 只抽取【读音（平假名）】部分的平假名来朗读
   function extractHiraganaOnly(text) {
-    // 这里写成 \\n，生成的 HTML 里会是 \n
+    // 注意这里用的是 "\\n"（在 Python 三引号中会被还原成 JS 里的 "\n"）
     var parts = text.split("\\n");
     var result = "";
+    var inReading = false;
 
     for (var i = 0; i < parts.length; i++) {
-      var line = parts[i];
-      if (/[ぁ-ん]/.test(line)) {
-        // 只保留平假名和长音符号
-        var cleaned = line.replace(/[^ぁ-んー]+/g, "");
-        if (cleaned) {
-          result += cleaned + "。";
-        }
+      var raw = parts[i];
+      var line = raw.trim();
+
+      // 命中“读音”/“平假名”关键词：从下一行开始视为读音区
+      if (line.indexOf("读音") !== -1 || line.indexOf("平假名") !== -1) {
+        inReading = true;
+        continue;
+      }
+
+      // 如果已经在读音区，遇到新的【xxx】标题（但不含读音字样），说明读音区结束
+      if (inReading && line.indexOf("【") === 0 &&
+          line.indexOf("读音") === -1 && line.indexOf("平假名") === -1) {
+        inReading = false;
+        // 不 return，继续按非读音状态处理这一行
+      }
+
+      if (!inReading) {
+        continue;
+      }
+
+      // 读音区内：只保留平假名和长音符号
+      var cleaned = line.replace(/[^ぁ-んー]+/g, "");
+      if (cleaned) {
+        result += cleaned + "。";
       }
     }
 
