@@ -302,6 +302,13 @@ def render_playground_html() -> str:
           <button id="send">发送给 ことの葉 ▶ 生成日语表达</button>
           <button id="speak" class="btn-secondary">🔊 朗读当前回复（需要已开通语音额度）</button>
           <div class="hint">先生成回复，再点朗读。若语音额度不足，会提示仅支持文字学习。</div>
+          <button id="speak-local" class="btn-secondary">
+  📱 使用本机朗读（日语示范发音，免密钥）
+</button>
+<div class="hint">
+  大部分手机/浏览器支持日文语音。如果听不到，说明当前设备不支持或未安装日文语音。
+</div>
+
 
           <div class="reply-wrap">
             <div class="reply-label">
@@ -320,85 +327,145 @@ def render_playground_html() -> str:
       </div>
 
       <script>
-        const chatEndpoint = "/agent/chat";
-        const ttsEndpoint = "/tts";
+  const chatEndpoint = "/agent/chat";
+  const ttsEndpoint = "/tts";
 
-        const sendBtn = document.getElementById("send");
-        const speakBtn = document.getElementById("speak");
-        const inputEl = document.getElementById("input");
-        const modeEl = document.getElementById("mode");
-        const replyEl = document.getElementById("reply");
-        const audioEl = document.getElementById("audio");
+  const sendBtn = document.getElementById("send");
+  const speakBtn = document.getElementById("speak");        // 服务器 TTS（以后可用）
+  const speakLocalBtn = document.getElementById("speak-local"); // 本机朗读（免费）
+  const inputEl = document.getElementById("input");
+  const modeEl = document.getElementById("mode");
+  const replyEl = document.getElementById("reply");
+  const audioEl = document.getElementById("audio");
 
-        async function send() {
-          const text = inputEl.value.trim();
-          if (!text) return;
-          const mode = modeEl.value;
-          replyEl.textContent = "考え中… / 正在为你组织最自然的表达…";
-          audioEl.removeAttribute("src");
-          sendBtn.disabled = true;
-          try {
-            const res = await fetch(chatEndpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                user_id: "web-playground",
-                mode,
-                message: text
-              })
-            });
-            const data = await res.json();
-            replyEl.textContent = data.reply || JSON.stringify(data, null, 2);
-          } catch (e) {
-            replyEl.textContent = "出错了，请稍后重试：" + e;
-          } finally {
-            sendBtn.disabled = false;
-          }
-        }
+  // 发送到 /agent/chat，生成日语表达
+  async function send() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    const mode = modeEl.value;
+    replyEl.textContent = "考え中… / 正在为你组织最自然的表达…";
+    audioEl.removeAttribute("src");
+    sendBtn.disabled = true;
+    try {
+      const res = await fetch(chatEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: "web-playground",
+          mode,
+          message: text
+        })
+      });
+      const data = await res.json();
+      replyEl.textContent = data.reply || JSON.stringify(data, null, 2);
+    } catch (e) {
+      replyEl.textContent = "出错了，请稍后重试：" + e;
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
 
-        async function speak() {
-          const text = replyEl.textContent.trim();
-          if (!text) {
-            replyEl.textContent = "请先生成一条回复，再点击朗读。";
-            return;
-          }
-          speakBtn.disabled = true;
-          speakBtn.textContent = "语音生成中…";
-          try {
-            const res = await fetch(ttsEndpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                text: text,
-                voice: "alloy"
-              })
-            });
-            if (!res.ok) {
-              const err = await res.json().catch(() => ({}));
-              replyEl.textContent = "语音生成失败：" + (err.detail || res.status);
-              return;
-            }
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            audioEl.src = url;
-            audioEl.play();
-          } catch (e) {
-            replyEl.textContent = "语音请求出错：" + e;
-          } finally {
-            speakBtn.disabled = false;
-            speakBtn.textContent = "🔊 朗读当前回复（需要已开通语音额度）";
-          }
-        }
+  // 调用后端 /tts（如果你以后开通官方 TTS）
+  async function speak() {
+    const text = replyEl.textContent.trim();
+    if (!text) {
+      replyEl.textContent = "请先生成一条回复，再点击朗读。";
+      return;
+    }
+    speakBtn.disabled = true;
+    speakBtn.textContent = "语音生成中…";
+    try {
+      const res = await fetch(ttsEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: text,
+          voice: "alloy"
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        replyEl.textContent = "语音生成失败：" + (err.detail || res.status);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      audioEl.src = url;
+      audioEl.play();
+    } catch (e) {
+      replyEl.textContent = "语音请求出错：" + e;
+    } finally {
+      speakBtn.disabled = false;
+      speakBtn.textContent = "🔊 朗读当前回复（需要已开通语音额度）";
+    }
+  }
 
-        sendBtn.addEventListener("click", send);
-        speakBtn.addEventListener("click", speak);
-        inputEl.addEventListener("keydown", (e) => {
-          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-            e.preventDefault();
-            send();
-          }
-        });
-      </script>
+  // 提取回复中的日文，避免把整段中文也读出来
+  function extractJapanese(text) {
+    const m = text.match(/[\u3040-\u30FF\u4E00-\u9FFF\u3000-\u303F\uff01-\uff5e\s]+/g);
+    if (!m) return text;
+    return m.join(" ").replace(/\s+/g, " ").trim();
+  }
+
+  // 使用浏览器本地 TTS 免费朗读（日语）
+  function speakLocal() {
+    if (!("speechSynthesis" in window)) {
+      replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
+      return;
+    }
+
+    const raw = replyEl.textContent.trim();
+    if (!raw) {
+      replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
+      return;
+    }
+
+    const text = extractJapanese(raw);
+    if (!text) {
+      replyEl.textContent = "当前回复中没有识别到日文内容，请先生成包含日文句子的回复。";
+      return;
+    }
+
+    // 停止之前的朗读
+    window.speechSynthesis.cancel();
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "ja-JP";
+
+    // 尝试选择日文 voice（如果设备有）
+    const voices = window.speechSynthesis.getVoices();
+    const jpVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
+    if (jpVoice) {
+      utter.voice = jpVoice;
+    }
+
+    window.speechSynthesis.speak(utter);
+  }
+
+  // 事件绑定
+  sendBtn.addEventListener("click", send);
+
+  if (speakBtn) {
+    speakBtn.addEventListener("click", speak);
+  }
+
+  if (speakLocalBtn) {
+    speakLocalBtn.addEventListener("click", speakLocal);
+  }
+
+  inputEl.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      send();
+    }
+  });
+
+  // 部分浏览器需要先触发 getVoices 才加载语音列表
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.getVoices();
+  }
+</script>
+
     </body>
     </html>
     """
