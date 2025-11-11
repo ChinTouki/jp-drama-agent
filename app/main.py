@@ -322,8 +322,8 @@ def render_playground_html() -> str:
         </div>
       </div>
 
-  <script>
- function () {
+ <script>
+document.addEventListener('DOMContentLoaded', function () {
   var chatEndpoint = "/agent/chat";
   var ttsEndpoint = "/tts";
 
@@ -339,13 +339,37 @@ def render_playground_html() -> str:
   var replyEl = document.getElementById("reply");
   var audioEl = document.getElementById("audio");
 
-  var history = []; // { mode, input, reply }
+  var history = [];     // { mode, input, reply }
   var historyIndex = -1;
+  var localReadState = "idle"; // idle | playing | paused
 
-  // idle / playing / paused
-  var localReadState = "idle";
+  // 只抽取【读音（平假名）】里的平假名来朗读
+  function extractHiraganaOnly(text) {
+    var parts = text.split("\\n");  // 注意这里是 \\n
+    var result = "";
+    var inReading = false;
 
-  // ========== 工具函数们 ==========
+    for (var i = 0; i < parts.length; i++) {
+      var line = (parts[i] || "").trim();
+
+      // 命中“读音”/“平假名”标题，进入读音区（从下一行开始）
+      if (line.indexOf("读音") !== -1 || line.indexOf("平假名") !== -1) {
+        inReading = true;
+        continue;
+      }
+      // 在读音区内，遇到新【…】标题（且不含读音字样）则结束
+      if (inReading && line.indexOf("【") === 0 &&
+          line.indexOf("读音") === -1 && line.indexOf("平假名") === -1) {
+        break;
+      }
+      if (!inReading) continue;
+
+      // 只保留平假名和长音符号
+      var cleaned = line.replace(/[^ぁ-んー]+/g, "");
+      if (cleaned) result += cleaned + "。";
+    }
+    return result.trim();
+  }
 
   function resetLocalSpeakButton() {
     if (speakLocalBtn) {
@@ -371,97 +395,47 @@ def render_playground_html() -> str:
     if (index < 0 || index >= history.length) return;
     historyIndex = index;
     var item = history[historyIndex];
-
     if (modeEl) modeEl.value = item.mode;
     if (inputEl) inputEl.value = item.input;
     replyEl.textContent = item.reply;
-
     if (audioEl) audioEl.removeAttribute("src");
     stopLocalRead();
     updateHistoryButtons();
   }
 
-  // 只抽取【读音（平假名）】部分的平假名来朗读
-  function extractHiraganaOnly(text) {
-    // 注意这里用的是 "\\n"（在 Python 三引号中会被还原成 JS 里的 "\n"）
-    var parts = text.split("\\n");
-    var result = "";
-    var inReading = false;
-
-    for (var i = 0; i < parts.length; i++) {
-      var raw = parts[i];
-      var line = raw.trim();
-
-      // 命中“读音”/“平假名”关键词：从下一行开始视为读音区
-      if (line.indexOf("读音") !== -1 || line.indexOf("平假名") !== -1) {
-        inReading = true;
-        continue;
-      }
-
-      // 如果已经在读音区，遇到新的【xxx】标题（但不含读音字样），说明读音区结束
-      if (inReading && line.indexOf("【") === 0 &&
-          line.indexOf("读音") === -1 && line.indexOf("平假名") === -1) {
-        inReading = false;
-        // 不 return，继续按非读音状态处理这一行
-      }
-
-      if (!inReading) {
-        continue;
-      }
-
-      // 读音区内：只保留平假名和长音符号
-      var cleaned = line.replace(/[^ぁ-んー]+/g, "");
-      if (cleaned) {
-        result += cleaned + "。";
-      }
-    }
-
-    return result.trim();
-  }
-
-  // ========== 发送到 /agent/chat ==========
-
+  // 发送
   function send() {
-    if (!inputEl) return;
-    var text = (inputEl.value || "").trim();
+    var text = (inputEl && inputEl.value || "").trim();
     if (!text) return;
-
     var mode = modeEl ? modeEl.value : "daily";
-    replyEl.textContent = "考え中… / 正在为你组织最自然的表达…";
 
+    replyEl.textContent = "考え中… / 正在为你组织最自然的表达…";
     if (audioEl) audioEl.removeAttribute("src");
     stopLocalRead();
-
     if (sendBtn) sendBtn.disabled = true;
 
     fetch(chatEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: "web-playground",
-        mode: mode,
-        message: text
-      })
+      body: JSON.stringify({ user_id: "web-playground", mode: mode, message: text })
     })
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        var reply = data.reply || JSON.stringify(data, null, 2);
-        replyEl.textContent = reply;
-
-        history.push({ mode: mode, input: text, reply: reply });
-        historyIndex = history.length - 1;
-        updateHistoryButtons();
-      })
-      .catch(function (e) {
-        replyEl.textContent = "出错了，请稍后重试：" + e;
-      })
-      .finally(function () {
-        if (sendBtn) sendBtn.disabled = false;
-      });
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      var reply = data.reply || JSON.stringify(data, null, 2);
+      replyEl.textContent = reply;
+      history.push({ mode: mode, input: text, reply: reply });
+      historyIndex = history.length - 1;
+      updateHistoryButtons();
+    })
+    .catch(function (e) {
+      replyEl.textContent = "出错了，请稍后重试：" + e;
+    })
+    .finally(function () {
+      if (sendBtn) sendBtn.disabled = false;
+    });
   }
 
-  // ========== 云端 TTS（你以后有额度再用） ==========
-
+  // （可选）云端 TTS
   function speak() {
     if (!speakBtn) return;
     var text = replyEl.textContent.trim();
@@ -469,37 +443,37 @@ def render_playground_html() -> str:
       replyEl.textContent = "请先生成一条回复，再点击朗读。";
       return;
     }
-
     speakBtn.disabled = true;
     speakBtn.textContent = "语音生成中…";
-
     fetch(ttsEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: text, voice: "alloy" })
     })
-      .then(function (res) { return res.ok ? res.blob() : res.json().then(function (e) { throw e; }); })
-      .then(function (blob) {
-        if (blob instanceof Blob && audioEl) {
-          var url = URL.createObjectURL(blob);
-          audioEl.src = url;
-          audioEl.play();
-        } else {
-          replyEl.textContent = "语音生成失败：权限或额度问题。";
-        }
-      })
-      .catch(function (e) {
-        var msg = e && e.detail ? e.detail : (e.status || "") + " " + (e.message || "");
-        replyEl.textContent = "语音请求出错：" + msg;
-      })
-      .finally(function () {
-        speakBtn.disabled = false;
-        speakBtn.textContent = "🔊 朗读当前回复（需要已开通语音额度）";
-      });
+    .then(function (res) {
+      if (!res.ok) return res.json().then(function (e) { throw e; });
+      return res.blob();
+    })
+    .then(function (blob) {
+      if (blob instanceof Blob && audioEl) {
+        var url = URL.createObjectURL(blob);
+        audioEl.src = url;
+        audioEl.play();
+      } else {
+        replyEl.textContent = "语音生成失败：权限或额度问题。";
+      }
+    })
+    .catch(function (e) {
+      var msg = (e && e.detail) ? e.detail : (e.status || "") + " " + (e.message || "");
+      replyEl.textContent = "语音请求出错：" + msg;
+    })
+    .finally(function () {
+      speakBtn.disabled = false;
+      speakBtn.textContent = "🔊 朗读当前回复（需要已开通语音额度）";
+    });
   }
 
-  // ========== 本机朗读：平假名；播放→暂停→继续 ==========
-
+  // 本机朗读：只读平假名；播放 → 暂停 → 继续
   function speakLocal() {
     if (!window.speechSynthesis) {
       replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
@@ -507,7 +481,6 @@ def render_playground_html() -> str:
     }
 
     if (localReadState === "playing") {
-      // 正在播放 → 暂停
       window.speechSynthesis.pause();
       localReadState = "paused";
       if (speakLocalBtn) speakLocalBtn.textContent = "▶ 继续本机朗读";
@@ -515,14 +488,12 @@ def render_playground_html() -> str:
     }
 
     if (localReadState === "paused") {
-      // 暂停中 → 继续
       window.speechSynthesis.resume();
       localReadState = "playing";
       if (speakLocalBtn) speakLocalBtn.textContent = "⏸ 暂停本机朗读";
       return;
     }
 
-    // idle：开始新的朗读
     var raw = replyEl.textContent.trim();
     if (!raw) {
       replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
@@ -535,8 +506,7 @@ def render_playground_html() -> str:
       return;
     }
 
-    stopLocalRead(); // 保险起见，先清掉
-
+    stopLocalRead(); // 先清理之前的
     var utter = new SpeechSynthesisUtterance(hira);
     utter.lang = "ja-JP";
 
@@ -544,70 +514,48 @@ def render_playground_html() -> str:
     for (var i = 0; i < voices.length; i++) {
       var v = voices[i];
       if (v.lang && v.lang.toLowerCase().indexOf("ja") === 0) {
-        utter.voice = v;
-        break;
+        utter.voice = v; break;
       }
     }
 
     localReadState = "playing";
     if (speakLocalBtn) speakLocalBtn.textContent = "⏸ 暂停本机朗读";
 
-    utter.onend = function () {
-      localReadState = "idle";
-      resetLocalSpeakButton();
-    };
-    utter.onerror = function () {
-      localReadState = "idle";
-      resetLocalSpeakButton();
-    };
+    utter.onend = function () { localReadState = "idle"; resetLocalSpeakButton(); };
+    utter.onerror = function () { localReadState = "idle"; resetLocalSpeakButton(); };
 
     window.speechSynthesis.speak(utter);
   }
 
-  // ========== 清空输入 ==========
+  // 清空输入
   function clearInput() {
     if (inputEl) inputEl.value = "";
     stopLocalRead();
   }
 
-  // ========== 历史导航按钮事件 ==========
-  function showPrev() {
-    if (historyIndex > 0) {
-      loadHistory(historyIndex - 1);
-    }
-  }
+  // 历史导航
+  function showPrev() { if (historyIndex > 0) loadHistory(historyIndex - 1); }
+  function showNext() { if (historyIndex >= 0 && historyIndex < history.length - 1) loadHistory(historyIndex + 1); }
 
-  function showNext() {
-    if (historyIndex >= 0 && historyIndex < history.length - 1) {
-      loadHistory(historyIndex + 1);
-    }
-  }
-
-  // ========== 事件绑定 ==========
+  // 事件绑定
   if (sendBtn) sendBtn.addEventListener("click", send);
   if (speakBtn) speakBtn.addEventListener("click", speak);
   if (speakLocalBtn) speakLocalBtn.addEventListener("click", speakLocal);
   if (clearInputBtn) clearInputBtn.addEventListener("click", clearInput);
   if (prevBtn) prevBtn.addEventListener("click", showPrev);
   if (nextBtn) nextBtn.addEventListener("click", showNext);
-
   if (inputEl) {
     inputEl.addEventListener("keydown", function (e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault();
-        send();
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); send(); }
     });
   }
 
-  // 初始化语音（有些浏览器需要先调用一次）
-  if (window.speechSynthesis) {
-    window.speechSynthesis.getVoices();
-  }
-
+  // 初始化
+  if (window.speechSynthesis) window.speechSynthesis.getVoices();
   updateHistoryButtons();
-})();
+});
 </script>
+
 
 
 
