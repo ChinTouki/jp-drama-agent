@@ -301,7 +301,10 @@ def render_playground_html() -> str:
 
 <button id="send">发送给 ことの葉 ▶ 生成日语表达</button>
 <button id="speak" class="btn-secondary">🔊 朗读当前回复（需要已开通语音额度）</button>
-<button id="speak-local" class="btn-secondary">📱 使用本机朗读（日语示范发音，免密钥）</button>
+<button id="speak-local" class="btn-secondary">
+  📱 使用本机朗读（平假名示范发音）
+</button>
+
 
 <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
   <button id="clear-input" class="btn-secondary" style="flex:1;">🧹 清空输入</button>
@@ -339,7 +342,8 @@ def render_playground_html() -> str:
 
   const history = []; // { mode, input, reply }
   let historyIndex = -1;
-  let isSpeakingLocal = false;
+  let localReadState = "idle"; // idle, playing, paused
+
 
   // ===== 发送到 /agent/chat =====
   async function send() {
@@ -351,9 +355,11 @@ def render_playground_html() -> str:
 
     if (audioEl) audioEl.removeAttribute("src");
     if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      isSpeakingLocal = false;
-      resetLocalSpeakButton();
+  window.speechSynthesis.cancel();
+}
+localReadState = "idle";
+resetLocalSpeakButton();
+
     }
 
     if (sendBtn) sendBtn.disabled = true;
@@ -424,92 +430,117 @@ def render_playground_html() -> str:
   }
 
   // ===== 从回复中提取日文行：只读这些 =====
-  function extractJapaneseLines(text) {
-    const lines = text.split('\\n');
-    var jaLines = [];
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i].trim();
-      // 含平假名/片假名/汉字之一，就认为是日文相关
-      if (/[ぁ-んァ-ン一-龯]/.test(line)) {
-        jaLines.push(line);
-      }
+  function extractHiraganaOnly(text) {
+  // 注意：这里按行切，用的是 \\n，后端渲染后浏览器里就是 '\n'
+  const lines = text.split('\\n');
+  var hira = '';
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+
+    // 只关心含有平假名的行
+    if (/[ぁ-ん]/.test(line)) {
+      // 删掉平假名以外的内容，只保留：平假名 + 长音符号 + 空格
+      var cleaned = line.replace(/[^ぁ-んー ]/g, '');
+      hira += cleaned + ' ';
     }
-    if (jaLines.length === 0) return "";
-    return jaLines.join(' ');
   }
+
+  hira = hira.trim();
+  return hira;
+}
+
 
   function resetLocalSpeakButton() {
+  if (speakLocalBtn) {
+    speakLocalBtn.textContent = "📱 使用本机朗读（平假名示范发音）";
+  }
+}
+
+// 本机朗读：只读平假名，按顺序：播放 → 暂停 → 继续
+function speakLocal() {
+  if (!window.speechSynthesis) {
+    replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
+    return;
+  }
+
+  // 根据当前状态切换行为
+  if (localReadState === "playing") {
+    // 正在播放 → 暂停
+    window.speechSynthesis.pause();
+    localReadState = "paused";
     if (speakLocalBtn) {
-      speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+      speakLocalBtn.textContent = "▶ 继续本机朗读";
+    }
+    return;
+  }
+
+  if (localReadState === "paused") {
+    // 暂停中 → 继续
+    window.speechSynthesis.resume();
+    localReadState = "playing";
+    if (speakLocalBtn) {
+      speakLocalBtn.textContent = "⏸ 暂停本机朗读";
+    }
+    return;
+  }
+
+  // idle 状态（未播放）：开始新的朗读
+  var raw = replyEl.textContent.trim();
+  if (!raw) {
+    replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
+    return;
+  }
+
+  var text = extractHiraganaOnly(raw);
+  if (!text) {
+    replyEl.textContent = "当前回复中没有可朗读的平假名内容，请先生成包含平假名读音的回复。";
+    return;
+  }
+
+  // 开始前清理以前的朗读
+  window.speechSynthesis.cancel();
+
+  var utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "ja-JP";
+
+  // 尝试选日语 voice
+  var voices = window.speechSynthesis.getVoices();
+  for (var i = 0; i < voices.length; i++) {
+    var v = voices[i];
+    if (v.lang && v.lang.toLowerCase().indexOf("ja") === 0) {
+      utter.voice = v;
+      break;
     }
   }
 
-  // ===== 本机朗读：只读日文，再按一次停止 =====
-  function speakLocal() {
-    if (!window.speechSynthesis) {
-      replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
-      return;
-    }
-
-    if (isSpeakingLocal) {
-      window.speechSynthesis.cancel();
-      isSpeakingLocal = false;
-      resetLocalSpeakButton();
-      return;
-    }
-
-    var raw = replyEl.textContent.trim();
-    if (!raw) {
-      replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
-      return;
-    }
-
-    var text = extractJapaneseLines(raw);
-    if (!text) {
-      replyEl.textContent = "当前回复中没有可朗读的日文句子，请先生成包含日文的内容。";
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-
-    var utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "ja-JP";
-
-    var voices = window.speechSynthesis.getVoices();
-    var jpVoice = null;
-    for (var i = 0; i < voices.length; i++) {
-      var v = voices[i];
-      if (v.lang && v.lang.toLowerCase().indexOf("ja") === 0) {
-        jpVoice = v;
-        break;
-      }
-    }
-    if (jpVoice) utter.voice = jpVoice;
-
-    isSpeakingLocal = true;
-    if (speakLocalBtn) {
-      speakLocalBtn.textContent = "⏹ 停止本机朗读";
-    }
-
-    utter.onend = function () {
-      isSpeakingLocal = false;
-      resetLocalSpeakButton();
-    };
-    utter.onerror = function () {
-      isSpeakingLocal = false;
-      resetLocalSpeakButton();
-    };
-
-    window.speechSynthesis.speak(utter);
+  localReadState = "playing";
+  if (speakLocalBtn) {
+    speakLocalBtn.textContent = "⏸ 暂停本机朗读";
   }
+
+  utter.onend = function () {
+    localReadState = "idle";
+    resetLocalSpeakButton();
+  };
+  utter.onerror = function () {
+    localReadState = "idle";
+    resetLocalSpeakButton();
+  };
+
+  window.speechSynthesis.speak(utter);
+}
+
 
   // ===== 清空输入 =====
   function clearInput() {
     if (inputEl) inputEl.value = "";
     if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      isSpeakingLocal = false;
-      resetLocalSpeakButton();
+  window.speechSynthesis.cancel();
+}
+localReadState = "idle";
+resetLocalSpeakButton();
+
     }
   }
 
