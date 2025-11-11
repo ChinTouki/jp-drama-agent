@@ -401,53 +401,87 @@ def render_playground_html() -> str:
   }
 
   // 提取回复中的日文，避免把整段中文也读出来
-  function extractJapanese(text) {
-    const m = text.match(/[\u3040-\u30FF\u4E00-\u9FFF\u3000-\u303F\uff01-\uff5e\s]+/g);
-    if (!m) return text;
-    return m.join(" ").replace(/\s+/g, " ").trim();
-  }
+ function extractJapaneseLines(text) {
+  const lines = text.split(/\r?\n/);
+  const jaLines = lines
+    .map(line => line.trim())
+    .filter(line => {
+      // 含有平假名或片假名就认为是要读的日文
+      return /[\u3040-\u30FF]/.test(line);
+    });
+
+  if (!jaLines.length) return "";
+
+  return jaLines.join(" ").replace(/\s+/g, " ").trim();
+}
+
 
   // 使用浏览器本地 TTS 免费朗读（日语）
-  function speakLocal() {
-    if (!("speechSynthesis" in window)) {
-      replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
-      return;
-    }
+  let isSpeakingLocal = false;
 
-    const raw = replyEl.textContent.trim();
-    if (!raw) {
-      replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
-      return;
-    }
+function speakLocal() {
+  if (!("speechSynthesis" in window)) {
+    replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
+    return;
+  }
 
-    const text = extractJapanese(raw);
-    if (!text) {
-      replyEl.textContent = "当前回复中没有识别到日文内容，请先生成包含日文句子的回复。";
-      return;
-    }
-
-    // 停止之前的朗读
+  // 如果正在朗读，再按一次就停止
+  if (isSpeakingLocal) {
     window.speechSynthesis.cancel();
-
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "ja-JP";
-
-    // 尝试选择日文 voice（如果设备有）
-    const voices = window.speechSynthesis.getVoices();
-    const jpVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
-    if (jpVoice) {
-      utter.voice = jpVoice;
+    isSpeakingLocal = false;
+    if (speakLocalBtn) {
+      speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
     }
-
-    window.speechSynthesis.speak(utter);
+    return;
   }
 
-  // 事件绑定
-  sendBtn.addEventListener("click", send);
-
-  if (speakBtn) {
-    speakBtn.addEventListener("click", speak);
+  const raw = replyEl.textContent.trim();
+  if (!raw) {
+    replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
+    return;
   }
+
+  const text = extractJapaneseLines(raw);
+  if (!text) {
+    replyEl.textContent = "当前回复中没有找到需要朗读的日文句子，请确认已生成包含日文的内容。";
+    return;
+  }
+
+  // 确保停止之前的朗读
+  window.speechSynthesis.cancel();
+
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "ja-JP";
+
+  // 尝试选择日文 voice（如果设备有）
+  const voices = window.speechSynthesis.getVoices();
+  const jpVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
+  if (jpVoice) {
+    utter.voice = jpVoice;
+  }
+
+  // 状态 & 按钮文案
+  isSpeakingLocal = true;
+  if (speakLocalBtn) {
+    speakLocalBtn.textContent = "⏹ 停止本机朗读";
+  }
+
+  utter.onend = () => {
+    isSpeakingLocal = false;
+    if (speakLocalBtn) {
+      speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+    }
+  };
+
+  utter.onerror = () => {
+    isSpeakingLocal = false;
+    if (speakLocalBtn) {
+      speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+    }
+  };
+
+  window.speechSynthesis.speak(utter);
+}
 
   if (speakLocalBtn) {
     speakLocalBtn.addEventListener("click", speakLocal);
