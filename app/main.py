@@ -61,13 +61,14 @@ def read_root():
 # ===== Playground 页面（美化版，多人格选择，按热度排序） =====
 
 @app.get("/playground", response_class=HTMLResponse)
-def playground():
+def render_playground_html() -> str:
     return """
     <!DOCTYPE html>
     <html lang="zh-cn">
     <head>
       <meta charset="UTF-8" />
-      <title>ことの葉スタジオ（言叶日语场景工坊）｜多场景日语人格陪练</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>ことの葉スタジオ（言叶日语场景工坊）｜多场景日语陪练</title>
       <style>
         :root {
           --bg: #f5f5fa;
@@ -81,97 +82,101 @@ def playground():
         * { box-sizing: border-box; }
         body {
           margin: 0;
-          padding: 24px 12px 40px;
+          padding: 16px 10px 24px;
           font-family: var(--font);
           background:
             radial-gradient(circle at top left, #e0f2fe 0, transparent 55%),
             radial-gradient(circle at top right, #fee2e2 0, transparent 55%),
             var(--bg);
-          color: var(--primary);
+          color: --primary;
         }
         .shell {
-          max-width: 880px;
+          max-width: 900px;
           margin: 0 auto;
         }
         .card {
           background: rgba(255, 255, 255, 0.98);
-          border-radius: 24px;
-          padding: 24px 20px 20px;
-          box-shadow: 0 18px 40px rgba(15,23,42,0.06);
-          border: 1px solid rgba(148,163,253,0.18);
-          backdrop-filter: blur(10px);
+          border-radius: 20px;
+          padding: 16px 12px 14px;
+          box-shadow: 0 16px 40px rgba(15,23,42,0.06);
+          border: 1px solid rgba(148,163,253,0.16);
+          backdrop-filter: blur(8px);
         }
         h1 {
-          font-size: 24px;
-          margin: 0 0 6px;
+          font-size: 20px;
+          margin: 0 0 4px;
           display: flex;
           flex-wrap: wrap;
           align-items: center;
-          gap: 8px;
+          gap: 6px;
         }
         h1 span.logo {
           display: inline-flex;
-          padding: 4px 9px;
+          padding: 3px 7px;
           border-radius: 999px;
           background: var(--accent-soft);
-          font-size: 11px;
+          font-size: 10px;
           color: #9f1239;
         }
         .subtitle {
-          font-size: 13px;
+          font-size: 11px;
           color: #6b7280;
-          margin: 0 0 14px;
+          margin: 0 0 10px;
+          line-height: 1.5;
         }
         .tags {
           display: flex;
           flex-wrap: wrap;
-          gap: 6px;
-          margin-bottom: 14px;
-          font-size: 11px;
+          gap: 5px;
+          margin-bottom: 10px;
+          font-size: 9px;
         }
         .tag {
-          padding: 3px 8px;
+          padding: 3px 7px;
           border-radius: 999px;
           border: 1px solid var(--border);
           color: #6b7280;
+          white-space: nowrap;
         }
         label {
           display: block;
-          margin-top: 14px;
-          margin-bottom: 4px;
+          margin-top: 10px;
+          margin-bottom: 3px;
           font-weight: 600;
-          font-size: 13px;
+          font-size: 11px;
           color: #374151;
         }
         select, textarea, button {
           width: 100%;
-          font-size: 13px;
-          padding: 9px 10px;
+          font-size: 12px;
+          padding: 9px 9px;
           border-radius: var(--radius);
           border: 1px solid var(--border);
           outline: none;
-          transition: all .18s ease;
+          transition: all .16s ease;
           background: #ffffff;
         }
         select:focus, textarea:focus {
           border-color: #818cf8;
-          box-shadow: 0 0 0 2px rgba(129,140,248,0.15);
+          box-shadow: 0 0 0 2px rgba(129,140,248,0.16);
         }
         textarea {
           resize: vertical;
-          min-height: 72px;
+          min-height: 80px;
+          line-height: 1.5;
         }
         button {
-          margin-top: 10px;
+          margin-top: 8px;
           background: linear-gradient(to right, #111827, #1f2937);
           color: #fff;
           border: none;
           font-weight: 600;
           cursor: pointer;
+          border-radius: 999px;
         }
         button:hover:not(:disabled) {
           transform: translateY(-1px);
-          box-shadow: 0 10px 18px rgba(15,23,42,0.18);
+          box-shadow: 0 8px 16px rgba(15,23,42,0.18);
         }
         button:disabled {
           opacity: .6;
@@ -179,48 +184,68 @@ def playground():
           box-shadow: none;
           transform: none;
         }
+        .btn-secondary {
+          background: #4b5563;
+        }
         .hint {
-          font-size: 10px;
+          font-size: 9px;
           color: #9ca3af;
           margin-top: 2px;
         }
         .reply-wrap {
-          margin-top: 14px;
+          margin-top: 10px;
         }
         .reply-label {
           font-weight: 600;
-          font-size: 13px;
-          margin-bottom: 4px;
+          font-size: 11px;
+          margin-bottom: 3px;
           display: flex;
           justify-content: space-between;
+          gap: 6px;
           align-items: center;
           color: #374151;
         }
+        .reply-label span.sub {
+          font-size: 8px;
+          color: #9ca3af;
+        }
         .reply-box {
-          border-radius: var(--radius);
+          border-radius: 14px;
           border: 1px solid var(--border);
-          padding: 10px;
-          min-height: 72px;
+          padding: 8px;
+          min-height: 80px;
           background: #f9fafb;
           white-space: pre-wrap;
-          font-size: 13px;
+          font-size: 11px;
           line-height: 1.6;
         }
         .footer {
-          margin-top: 10px;
-          font-size: 9px;
+          margin-top: 8px;
+          font-size: 8px;
           color: #9ca3af;
           display: flex;
           justify-content: space-between;
           gap: 8px;
           align-items: center;
+          flex-wrap: wrap;
         }
         .footer span.right {
           text-align: right;
         }
-        @media (max-width: 600px) {
-          .card { padding: 18px 14px 14px; border-radius: 18px; }
-          h1 { font-size: 20px; }
+        audio {
+          width: 100%;
+          margin-top: 4px;
+        }
+        @media (min-width: 640px) {
+          body { padding: 24px 16px 32px; }
+          .card { padding: 22px 18px 18px; border-radius: 24px; }
+          h1 { font-size: 24px; }
+          .subtitle { font-size: 12px; }
+          .tags { font-size: 10px; }
+          label { font-size: 12px; }
+          select, textarea, button { font-size: 13px; }
+          .reply-box { font-size: 12px; }
+          .footer { font-size: 9px; }
         }
       </style>
     </head>
@@ -229,26 +254,27 @@ def playground():
         <div class="card">
           <h1>
             ことの葉スタジオ（言叶日语场景工坊）
-            <span class="logo">为在日与向往日本生活的华语用户提供多场景日语人格陪练</span>
+            <span class="logo">在日 & 来日前｜手机优先的多场景日语陪练</span>
           </h1>
           <p class="subtitle">
-            从电车、便利店、餐厅、会社、学校，到医院、育儿、住房、八卦和动漫日剧，
-            按场景选人格，比普通聊天更贴近真实日本生活。
+            选择场景人格，用中文描述需求，
+            即时获得「日文句子＋平假名＋中文解释」，适合在手机浏览器中边看边学。
           </p>
+
           <div class="tags">
             <div class="tag">🏠 日常生活</div>
-            <div class="tag">🍣 餐厅·咖啡·服装·理发店</div>
-            <div class="tag">✈️ 旅行常用句</div>
-            <div class="tag">💼 日本职场敬语</div>
-            <div class="tag">🎓 留学·校园·打工</div>
-            <div class="tag">🏥 医院就诊 & 孩子看病</div>
-            <div class="tag">👨‍👩‍👧 家长·亲子·老师沟通</div>
+            <div class="tag">🍣 餐厅・店铺・理发店</div>
+            <div class="tag">✈️ 旅行</div>
+            <div class="tag">💼 职场</div>
+            <div class="tag">🎓 留学</div>
+            <div class="tag">🏥 医院 & 孩子看病</div>
+            <div class="tag">👨‍👩‍👧 家长·亲子·老师</div>
             <div class="tag">🏡 租房·邻里·手续</div>
             <div class="tag">📺 动漫·日剧·综艺·游戏</div>
-            <div class="tag">🗣 安全八卦 & 闲聊</div>
+            <div class="tag">🗣 安全八卦·关西ことば</div>
           </div>
 
-          <label for="mode">选择人格 / モード（按常用程度排序）</label>
+          <label for="mode">选择人格 / モード</label>
           <select id="mode">
             <option value="daily">🏠 日常日语场景｜ことの葉デイリー</option>
             <option value="service">🍣 店铺服务场景｜ことの葉サービストーク</option>
@@ -258,101 +284,61 @@ def playground():
             <option value="medical">🏥 医院就诊 & 儿科沟通｜ことの葉メディカル会話</option>
             <option value="family">👨‍👩‍👧 家长 & 学校沟通｜ことの葉ファミリーサポート</option>
             <option value="parenting">👨‍👧 亲子沟通 & 教育｜ことの葉ペアレンティング</option>
-            <option value="housing">🏡 租房·邻里·手续咨询｜ことの葉ライフサポート</option>
-            <option value="kansai">🌀 关西ことば入门｜ことの葉関西ことば</option>
+            <option value="housing">🏡 租房·邻里·手续｜ことの葉ライフサポート</option>
             <option value="culture">📺 动漫·日剧·综艺·游戏｜ことの葉カルチャートーク</option>
+            <option value="kansai">🌀 关西ことば入门｜ことの葉関西ことば</option>
             <option value="gossip">🗣 妈妈友·邻居·同事闲聊｜ことの葉ご近所トーク</option>
             <option value="comfort_soft">🌸 暖心陪练・柔｜ことの葉コンフォート・柔</option>
             <option value="comfort_calm">🕶 沉稳陪练・穏｜ことの葉コンフォート・穏</option>
           </select>
           <div class="hint">
-            直接用中文写，比如：「理发时想说不要剪太短」「当店员提醒客人不能在店内拍照」「孩子发烧去小儿科怎么说」。
+            示例：理发时说「不要剪太短」；做店员欢迎客人；孩子生病说明症状；和关西同事轻松寒暄等等。
           </div>
 
-          <label for="input">输入你的场景 / 心情 / 句子</label>
+          <label for="input">用中文描述你的场景</label>
           <textarea id="input"
-            placeholder="例如：\n- 在连锁居酒屋打工，想用礼貌自然的日语招呼客人。\n- 想跟服装店店员问有没有小一号。\n- 给房东发消息，说马桶坏了。\n- 和妈妈友聊孩子上幼儿园的适应情况。"></textarea>
+            placeholder="例如：\n- 明天第一次去日本公司上班想自我介绍。\n- 孩子咳嗽一周了，想在医院说清楚。\n- 在大阪打工想学自然的关西ことば问候客人。"></textarea>
 
-          <button id="send">发送给 ことの葉 ▶</button>
-          <div class="hint">快捷键：Ctrl / ⌘ + Enter 发送</div>
-          <button id="speak" style="margin-top:6px;background:#4b5563;">🔊 朗读当前回复（日文为主）</button>
-<div class="hint">如果当前回复里有日文例句，会自动转成语音，方便跟读。</div>
-
-<audio id="audio" style="margin-top:6px;width:100%;" controls></audio>
-
+          <button id="send">发送给 ことの葉 ▶ 生成日语表达</button>
+          <button id="speak" class="btn-secondary">🔊 朗读当前回复（需要已开通语音额度）</button>
+          <div class="hint">先生成回复，再点朗读。若语音额度不足，会提示仅支持文字学习。</div>
 
           <div class="reply-wrap">
             <div class="reply-label">
               <span>ことの葉回复</span>
-              <span style="font-size:10px;color:#9ca3af;">包含日文句子＋平假名读音＋中文解释＋必要场景提示</span>
+              <span class="sub">日文句子＋平假名＋中文解释＋必要场景提示</span>
             </div>
             <div id="reply" class="reply-box">这里会出现针对你场景的日语表达建议。</div>
+            <audio id="audio" controls></audio>
           </div>
 
           <div class="footer">
-            <span>体验版每日调用有限制；医疗等内容仅作语言参考，不替代专业诊疗。</span>
-            <span class="right">Powered by Kotonoha Studio（言叶日语场景工坊）</span>
+            <span>体验版每日调用有限制；医疗相关内容仅作语言示例，不替代专业诊疗。</span>
+            <span class="right">手机浏览器 / INS / TikTok 内置打开均适用。</span>
           </div>
         </div>
       </div>
 
       <script>
-        const endpoint = "/agent/chat";
+        const chatEndpoint = "/agent/chat";
+        const ttsEndpoint = "/tts";
+
         const sendBtn = document.getElementById("send");
+        const speakBtn = document.getElementById("speak");
         const inputEl = document.getElementById("input");
         const modeEl = document.getElementById("mode");
         const replyEl = document.getElementById("reply");
-        const speakBtn = document.getElementById("speak");
-const audioEl = document.getElementById("audio");
-async function speak() {
-  const text = replyEl.textContent.trim();
-  if (!text) {
-    replyEl.textContent = "请先生成一条回复，再点击朗读。";
-    return;
-  }
-
-  speakBtn.disabled = true;
-  speakBtn.textContent = "生成语音中…";
-
-  try {
-    const res = await fetch("/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,       // 简单做法：整个回复交给 TTS；以后你可以只截取日文行
-        voice: "alloy"
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      replyEl.textContent = "语音生成失败：" + (err.detail || res.status);
-      return;
-    }
-
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    audioEl.src = url;
-    audioEl.play();
-  } catch (e) {
-    replyEl.textContent = "语音请求出错：" + e;
-  } finally {
-    speakBtn.disabled = false;
-    speakBtn.textContent = "🔊 朗读当前回复（日文为主）";
-  }
-}
-
-speakBtn.addEventListener("click", speak);
-
+        const audioEl = document.getElementById("audio");
 
         async function send() {
           const text = inputEl.value.trim();
           if (!text) return;
           const mode = modeEl.value;
           replyEl.textContent = "考え中… / 正在为你组织最自然的表达…";
+          audioEl.removeAttribute("src");
           sendBtn.disabled = true;
           try {
-            const res = await fetch(endpoint, {
+            const res = await fetch(chatEndpoint, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -370,7 +356,42 @@ speakBtn.addEventListener("click", speak);
           }
         }
 
+        async function speak() {
+          const text = replyEl.textContent.trim();
+          if (!text) {
+            replyEl.textContent = "请先生成一条回复，再点击朗读。";
+            return;
+          }
+          speakBtn.disabled = true;
+          speakBtn.textContent = "语音生成中…";
+          try {
+            const res = await fetch(ttsEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: text,
+                voice: "alloy"
+              })
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              replyEl.textContent = "语音生成失败：" + (err.detail || res.status);
+              return;
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            audioEl.src = url;
+            audioEl.play();
+          } catch (e) {
+            replyEl.textContent = "语音请求出错：" + e;
+          } finally {
+            speakBtn.disabled = false;
+            speakBtn.textContent = "🔊 朗读当前回复（需要已开通语音额度）";
+          }
+        }
+
         sendBtn.addEventListener("click", send);
+        speakBtn.addEventListener("click", speak);
         inputEl.addEventListener("keydown", (e) => {
           if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
             e.preventDefault();
@@ -381,6 +402,19 @@ speakBtn.addEventListener("click", speak);
     </body>
     </html>
     """
+
+
+@app.get("/playground", response_class=HTMLResponse)
+def playground():
+    # 默认网页入口（PC & 手机通用，手机优先设计）
+    return render_playground_html()
+
+
+@app.get("/m", response_class=HTMLResponse)
+@app.get("/mobile", response_class=HTMLResponse)
+def playground_mobile():
+    # 短链接 /m /mobile，便于在 IG / TikTok 简介中使用
+    return render_playground_html()
 
 
 # ===== 请求 / 响应模型 =====
