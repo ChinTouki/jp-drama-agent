@@ -323,7 +323,7 @@ def render_playground_html() -> str:
       </div>
 
   <script>
-(function () {
+ function () {
   var chatEndpoint = "/agent/chat";
   var ttsEndpoint = "/tts";
 
