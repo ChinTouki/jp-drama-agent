@@ -345,21 +345,35 @@ def render_playground_html() -> str:
   const ttsEndpoint = "/tts";
 
   const sendBtn = document.getElementById("send");
-  const speakBtn = document.getElementById("speak");        // 服务器 TTS（以后可用）
-  const speakLocalBtn = document.getElementById("speak-local"); // 本机朗读（免费）
+  const speakBtn = document.getElementById("speak");              // 云端 TTS（可选）
+  const speakLocalBtn = document.getElementById("speak-local");   // 本机朗读
+  const clearInputBtn = document.getElementById("clear-input");   // 清空输入
+  const prevBtn = document.getElementById("prev-history");        // 上一条
+  const nextBtn = document.getElementById("next-history");        // 下一条
+
   const inputEl = document.getElementById("input");
   const modeEl = document.getElementById("mode");
   const replyEl = document.getElementById("reply");
   const audioEl = document.getElementById("audio");
 
-  // 发送到 /agent/chat，生成日语表达
+  // 简单本地历史：[{ mode, input, reply }]
+  const history = [];
+  let historyIndex = -1;
+
+  // ===== 发送到 /agent/chat，生成日语表达 =====
   async function send() {
     const text = inputEl.value.trim();
     if (!text) return;
     const mode = modeEl.value;
+
     replyEl.textContent = "考え中… / 正在为你组织最自然的表达…";
-    audioEl.removeAttribute("src");
+    if (audioEl) audioEl.removeAttribute("src");
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+
     sendBtn.disabled = true;
+
     try {
       const res = await fetch(chatEndpoint, {
         method: "POST",
@@ -370,8 +384,15 @@ def render_playground_html() -> str:
           message: text
         })
       });
+
       const data = await res.json();
-      replyEl.textContent = data.reply || JSON.stringify(data, null, 2);
+      const reply = data.reply || JSON.stringify(data, null, 2);
+      replyEl.textContent = reply;
+
+      // 写入历史
+      history.push({ mode, input: text, reply });
+      historyIndex = history.length - 1;
+      updateHistoryButtons();
     } catch (e) {
       replyEl.textContent = "出错了，请稍后重试：" + e;
     } finally {
@@ -379,33 +400,38 @@ def render_playground_html() -> str:
     }
   }
 
-  // 调用后端 /tts（如果你以后开通官方 TTS）
+  // ===== 调用后端 /tts（如果以后开正式 TTS） =====
   async function speak() {
+    if (!speakBtn) return;
+
     const text = replyEl.textContent.trim();
     if (!text) {
       replyEl.textContent = "请先生成一条回复，再点击朗读。";
       return;
     }
+
     speakBtn.disabled = true;
     speakBtn.textContent = "语音生成中…";
+
     try {
       const res = await fetch(ttsEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: text,
-          voice: "alloy"
-        })
+        body: JSON.stringify({ text, voice: "alloy" })
       });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         replyEl.textContent = "语音生成失败：" + (err.detail || res.status);
         return;
       }
+
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      audioEl.src = url;
-      audioEl.play();
+      if (audioEl) {
+        audioEl.src = url;
+        audioEl.play();
+      }
     } catch (e) {
       replyEl.textContent = "语音请求出错：" + e;
     } finally {
@@ -414,105 +440,166 @@ def render_playground_html() -> str:
     }
   }
 
-  // 提取回复中的日文，避免把整段中文也读出来
- function extractJapaneseLines(text) {
-  const lines = text.split(/\r?\n/);
-  const jaLines = lines
-    .map(line => line.trim())
-    .filter(line => {
-      // 含有平假名或片假名就认为是要读的日文
-      return /[\u3040-\u30FF]/.test(line);
-    });
+  // ===== 只取含假名的行：只读日文，不读中文解释 =====
+  function extractJapaneseLines(text) {
+    const lines = text.split(/\r?\n/);
+    const jaLines = lines
+      .map(line => line.trim())
+      .filter(line => /[\u3040-\u30FF]/.test(line)); // 含平假名/片假名
 
-  if (!jaLines.length) return "";
+    if (!jaLines.length) return "";
+    return jaLines.join(" ").replace(/\s+/g, " ").trim();
+  }
 
-  return jaLines.join(" ").replace(/\s+/g, " ").trim();
-}
-
-
-  // 使用浏览器本地 TTS 免费朗读（日语）
+  // ===== 本机朗读（日语），再按一次停止 =====
   let isSpeakingLocal = false;
 
-function speakLocal() {
-  if (!("speechSynthesis" in window)) {
-    replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
-    return;
-  }
+  function speakLocal() {
+    if (!("speechSynthesis" in window)) {
+      replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
+      return;
+    }
 
-  // 如果正在朗读，再按一次就停止
-  if (isSpeakingLocal) {
+    // 再按一次：停止朗读
+    if (isSpeakingLocal) {
+      window.speechSynthesis.cancel();
+      isSpeakingLocal = false;
+      if (speakLocalBtn) {
+        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+      }
+      return;
+    }
+
+    const raw = replyEl.textContent.trim();
+    if (!raw) {
+      replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
+      return;
+    }
+
+    const text = extractJapaneseLines(raw);
+    if (!text) {
+      replyEl.textContent = "当前回复中没有找到需要朗读的日文句子，请先生成包含日文例句的内容。";
+      return;
+    }
+
     window.speechSynthesis.cancel();
-    isSpeakingLocal = false;
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "ja-JP";
+
+    const voices = window.speechSynthesis.getVoices();
+    const jpVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
+    if (jpVoice) utter.voice = jpVoice;
+
+    isSpeakingLocal = true;
     if (speakLocalBtn) {
-      speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+      speakLocalBtn.textContent = "⏹ 停止本机朗读";
     }
-    return;
+
+    utter.onend = () => {
+      isSpeakingLocal = false;
+      if (speakLocalBtn) {
+        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+      }
+    };
+    utter.onerror = () => {
+      isSpeakingLocal = false;
+      if (speakLocalBtn) {
+        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+      }
+    };
+
+    window.speechSynthesis.speak(utter);
   }
 
-  const raw = replyEl.textContent.trim();
-  if (!raw) {
-    replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
-    return;
-  }
-
-  const text = extractJapaneseLines(raw);
-  if (!text) {
-    replyEl.textContent = "当前回复中没有找到需要朗读的日文句子，请确认已生成包含日文的内容。";
-    return;
-  }
-
-  // 确保停止之前的朗读
-  window.speechSynthesis.cancel();
-
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = "ja-JP";
-
-  // 尝试选择日文 voice（如果设备有）
-  const voices = window.speechSynthesis.getVoices();
-  const jpVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
-  if (jpVoice) {
-    utter.voice = jpVoice;
-  }
-
-  // 状态 & 按钮文案
-  isSpeakingLocal = true;
-  if (speakLocalBtn) {
-    speakLocalBtn.textContent = "⏹ 停止本机朗读";
-  }
-
-  utter.onend = () => {
-    isSpeakingLocal = false;
-    if (speakLocalBtn) {
-      speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+  // ===== 清空输入 =====
+  function clearInput() {
+    inputEl.value = "";
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      isSpeakingLocal = false;
+      if (speakLocalBtn) {
+        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+      }
     }
-  };
+  }
 
-  utter.onerror = () => {
-    isSpeakingLocal = false;
-    if (speakLocalBtn) {
-      speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+  // ===== 历史导航 =====
+  function updateHistoryButtons() {
+    if (!prevBtn || !nextBtn) return;
+    prevBtn.disabled = historyIndex <= 0;
+    nextBtn.disabled = historyIndex < 0 || historyIndex >= history.length - 1;
+  }
+
+  function loadHistory(index) {
+    if (index < 0 || index >= history.length) return;
+    historyIndex = index;
+    const item = history[historyIndex];
+    modeEl.value = item.mode;
+    inputEl.value = item.input;
+    replyEl.textContent = item.reply;
+    if (audioEl) audioEl.removeAttribute("src");
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      isSpeakingLocal = false;
+      if (speakLocalBtn) {
+        speakLocalBtn.textContent = "📱 使用本机朗读（日语示范发音，免密钥）";
+      }
     }
-  };
+    updateHistoryButtons();
+  }
 
-  window.speechSynthesis.speak(utter);
-}
+  function showPrev() {
+    if (historyIndex > 0) {
+      loadHistory(historyIndex - 1);
+    }
+  }
 
+  function showNext() {
+    if (historyIndex >= 0 && historyIndex < history.length - 1) {
+      loadHistory(historyIndex + 1);
+    }
+  }
+
+  // ===== 事件绑定 =====
+  if (sendBtn) {
+    sendBtn.addEventListener("click", send);
+  }
+  if (speakBtn) {
+    speakBtn.addEventListener("click", speak);
+  }
   if (speakLocalBtn) {
     speakLocalBtn.addEventListener("click", speakLocal);
   }
+  if (clearInputBtn) {
+    clearInputBtn.addEventListener("click", clearInput);
+  }
+  if (prevBtn) {
+    prevBtn.addEventListener("click", showPrev);
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener("click", showNext);
+  }
 
-  inputEl.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      send();
-    }
-  });
+  if (inputEl) {
+    inputEl.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        send();
+      }
+    });
+  }
 
-  // 部分浏览器需要先触发 getVoices 才加载语音列表
+  // 某些浏览器需要先触发一次获取 voice 列表
   if ("speechSynthesis" in window) {
     window.speechSynthesis.getVoices();
   }
+
+  // 初始禁用历史按钮
+  updateHistoryButtons();
 </script>
+
+
 
     </body>
     </html>
