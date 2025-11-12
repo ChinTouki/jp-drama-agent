@@ -1182,6 +1182,114 @@ document.addEventListener('DOMContentLoaded', function () {
   window.speakSmartMobile = speakSmartMobile;
 })();
 </script>
+<script>
+/** ===== iOS-friendly 日语读音朗读（片假名OK） ===== */
+(() => {
+  const isIOS = /iP(hone|ad|od)/i.test(navigator.userAgent);
+
+  // 推荐先在 iOS: 设置→辅助功能→朗读内容→声音→日本語 下载 "Kyoko/Otoya" 或 Siri 日语
+  const IOS_JA_PREF = /Kyoko|Otoya|Siri/i; // 按名称优先
+
+  // ——把“读音”文本规范化为更利于日语 TTS 的形式——
+  function normalizeJaPron(text) {
+    if (!text) return "";
+    let t = String(text).normalize("NFKC");      // 全角化（含半角片假名→全角）
+    t = t.replace(/[,，]/g,"、")
+         .replace(/[.．。]{1,}/g,"。")
+         .replace(/[!！]{1,}/g,"！")
+         .replace(/[?？]{1,}/g,"？")
+         .replace(/[:：]/g,"、").replace(/[;；]/g,"、")
+         .replace(/･/g,"・").replace(/ｰ/g,"ー")
+         .replace(/\s+/g," ")                   // 连续空白
+         .replace(/ /g,"、")                    // 空格→小停顿
+         .replace(/、{2,}/g,"、")
+         .replace(/。{2,}/g,"。");
+    if (!/[。！？]$/.test(t)) t += "。";
+    return t;
+  }
+
+  // ——按句号/感叹号/问号切块；过长句再按顿号细分——
+  function splitJaChunks(t, hardLen = isIOS ? 60 : 80) {
+    const first = t.split(/(?<=[。！？])/);
+    const out = [];
+    for (const seg of first) {
+      const s = seg.trim();
+      if (!s) continue;
+      if (s.length > hardLen && s.includes("、")) {
+        const parts = s.split("、");
+        parts.forEach((p,i)=>{ const q=p.trim(); if(q) out.push(i<parts.length-1?q+"、":q); });
+      } else out.push(s);
+    }
+    return out;
+  }
+
+  // ——等待系统 voices 可用（iOS 首次常为空）——
+  function waitVoicesReady(timeoutMs = 2500) {
+    return new Promise(resolve => {
+      const now = speechSynthesis.getVoices();
+      if (now && now.length) return resolve(now);
+      let done = false;
+      const timer = setTimeout(() => { if (!done){ done = true; resolve(speechSynthesis.getVoices()); }}, timeoutMs);
+      window.speechSynthesis.onvoiceschanged = () => {
+        if (!done){ done = true; clearTimeout(timer); resolve(speechSynthesis.getVoices()); }
+      };
+      speechSynthesis.getVoices(); // 触发加载
+    });
+  }
+
+  // ——挑选最合适的日语 voice（优先 Kyoko/Otoya/Siri）——
+  function pickJaVoice(voices) {
+    const list = voices || speechSynthesis.getVoices() || [];
+    // 1) ja-JP 且名字匹配偏好
+    let v = list.find(v => v.lang === "ja-JP" && IOS_JA_PREF.test(v.name || ""));
+    if (v) return v;
+    // 2) 纯 ja-JP
+    v = list.find(v => v.lang === "ja-JP");
+    if (v) return v;
+    // 3) 语言前缀 ja-
+    v = list.find(v => (v.lang || "").toLowerCase().startsWith("ja"));
+    return v || list[0] || null;
+  }
+
+  // ——核心：专读【读音】——
+  async function speakPronunciationJaIOS(pronText, opts = {}) {
+    if (!("speechSynthesis" in window)) return;
+    const raw = (pronText ?? "").trim();
+    if (!raw) return;
+
+    // iOS 需要用户手势后调用；多次点击避免叠音
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+
+    const prepared = normalizeJaPron(raw);
+    const chunks = splitJaChunks(prepared);
+
+    const voices = await waitVoicesReady();
+    const voice = pickJaVoice(voices);
+
+    const rate = opts.rate ?? 1.02; // 稍慢清晰
+    const pitch = opts.pitch ?? 1.0;
+    const vol  = opts.volume ?? 1.0;
+
+    let i = 0;
+    const play = () => {
+      if (i >= chunks.length) return;
+      const u = new SpeechSynthesisUtterance(chunks[i++]);
+      if (voice) u.voice = voice;
+      u.lang   = "ja-JP";
+      u.rate   = rate;
+      u.pitch  = pitch;
+      u.volume = vol;
+      u.onerror = e => console.warn("[ios-ja-pron]", e.error || e.name || e);
+      u.onend   = () => play();   // 串行播放，iOS 更稳
+      speechSynthesis.speak(u);
+    };
+    play();
+  }
+
+  // 暴露到全局，供你在【读音】按钮或流程里直接调用
+  window.speakPronunciationJaIOS = speakPronunciationJaIOS;
+})();
+</script>
 
 
 
