@@ -566,89 +566,65 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 
 <script>
+// ========== Speech Input Add-on (safe, non-destructive) ==========
 (() => {
-  // === 配置 ===
-  const TARGET_TEXTAREA_ID = "inputText"; // <- 改成你的输入框 id
-  const CONTINUOUS = false;               // 每次说完自动停止；想持续听写可改 true
-  const INTERIM = true;                   // 显示临时结果
-  const APPEND_MODE = false;              // true=追加；false=覆盖
+  // ---- 必填：改成你页面里真实的选择器 ----
+  const INPUT_SELECTOR = "#inputText";   // 你的输入框（如 textarea 或 input）的选择器
+  const SEND_BTN_SELECTOR = "#btnSend";  // 你的发送按钮选择器（可留空）
+  const LANG_DEFAULT = "zh-CN";          // 默认中文（可切换 ja-JP）
 
-  const $btn = document.getElementById("btnMic");
-  const $status = document.getElementById("micStatus");
-  const $ta = document.getElementById(TARGET_TEXTAREA_ID);
-  const $sel = document.getElementById("srLang");
+  // ---- 可选：行为开关 ----
+  const CONTINUOUS = false;              // true=持续听写
+  const INTERIM = true;                  // true=状态栏显示临时结果
+  const APPEND_MODE = false;             // true=在输入框末尾追加；false=覆盖
+  const AUTO_CLICK_SEND_ON_END = false;  // true=识别结束后自动点发送按钮
+  const CALL_CUSTOM_SUBMIT_FN = "";      // 如果你有全局函数如 runAnalysis，则填 "runAnalysis"
 
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    if ($btn) { $btn.disabled = true; $btn.title = "此浏览器不支持语音输入"; }
-    if ($status) $status.textContent = "音声非対応";
-    return;
+  // ---- 麦克风 UI（若你已放置了按钮/下拉，保持相同 id 即可；没有就自动创建）----
+  let $btn = document.getElementById("btnMic");
+  let $status = document.getElementById("micStatus");
+  let $langSel = document.getElementById("srLang");
+
+  function ensureBasicUI() {
+    // 若页面没有这三个控件，就简易创建并插到输入框后面
+    const $input = document.querySelector(INPUT_SELECTOR);
+    if (!$input) return; // 没有就什么都不干（不报错）
+    const host = $input.parentElement || document.body;
+
+    if (!$langSel) {
+      $langSel = document.createElement("select");
+      $langSel.id = "srLang";
+      $langSel.innerHTML = `
+        <option value="zh-CN" selected>中文</option>
+        <option value="ja-JP">日本語</option>
+      `;
+      $langSel.style.marginRight = "6px";
+      host.appendChild($langSel);
+    }
+    if (!$btn) {
+      $btn = document.createElement("button");
+      $btn.id = "btnMic";
+      $btn.type = "button";
+      $btn.textContent = "🎤 语音输入";
+      $btn.style.marginLeft = "6px";
+      host.appendChild($btn);
+    }
+    if (!$status) {
+      $status = document.createElement("small");
+      $status.id = "micStatus";
+      $status.textContent = "待机中";
+      $status.style.marginLeft = "8px";
+      $status.style.color = "#666";
+      host.appendChild($status);
+    }
   }
 
-  let recognition = null;
-  let listening = false;
-  let finalBuffer = "";
-
-  function newRecognizer() {
-    const rec = new SR();
-    rec.lang = ($sel && $sel.value) ? $sel.value : "zh-CN"; // 默认中文
-    rec.continuous = CONTINUOUS;
-    rec.interimResults = INTERIM;
-    rec.maxAlternatives = 1;
-
-    rec.onstart = () => {
-      listening = true;
-      setPressed(true);
-      setStatus(rec.lang.startsWith("zh") ? "聆听中…（再次点击停止）" : "傾聴中…（もう一度クリックで停止）");
-    };
-
-    rec.onend = () => {
-      setPressed(false);
-      listening = false;
-      if (finalBuffer.trim()) {
-        // 可选：自动补句号（中文/日文简单处理）
-        const text = autoPunct(finalBuffer.trim(), rec.lang);
-        writeToTextarea(text);
-        finalBuffer = "";
-        setStatus(rec.lang.startsWith("zh") ? "识别结束" : "認識終了");
-      } else {
-        setStatus(rec.lang.startsWith("zh") ? "待机中" : "待機中");
-      }
-    };
-
-    rec.onresult = (ev) => {
-      let interim = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const res = ev.results[i];
-        const text = res[0] && res[0].transcript ? res[0].transcript : "";
-        if (res.isFinal) finalBuffer += text;
-        else if (INTERIM) interim += text;
-      }
-      if (INTERIM && interim) setStatus((rec.lang.startsWith("zh") ? "临时: " : "暫定: ") + sanitize(interim));
-    };
-
-    rec.onerror = (e) => {
-      setStatus("错误/エラー: " + e.error);
-      setPressed(false);
-      listening = false;
-    };
-
-    return rec;
+  // ---- 安全取元素，不存在就返回 null，不抛错 ----
+  function getEl(sel) {
+    try { return sel ? document.querySelector(sel) : null; } catch { return null; }
   }
 
-  function ensureInstance() {
-    if (!recognition) recognition = newRecognizer();
-  }
-
-  // 语言切换时，重建识别器（若正在听，先停）
-  if ($sel) {
-    $sel.addEventListener("change", () => {
-      if (listening && recognition) try { recognition.stop(); } catch {}
-      recognition = newRecognizer();
-      setStatus($sel.value.startsWith("zh") ? "已切换到中文" : "日本語に切替えました");
-    });
-  }
-
+  function setStatus(msg) { if ($status) $status.textContent = msg; }
   function setPressed(on) {
     if ($btn) {
       $btn.setAttribute("aria-pressed", String(on));
@@ -656,57 +632,142 @@ document.addEventListener('DOMContentLoaded', function () {
       $btn.style.borderColor = on ? "dodgerblue" : "";
     }
   }
-  function setStatus(msg) { if ($status) $status.textContent = msg; }
-  function sanitize(s) { return s.replace(/\s+/g, " ").trim(); }
 
+  function sanitize(s){ return String(s||"").replace(/\s+/g," ").trim(); }
   function autoPunct(text, lang) {
-    // 简单规则：末尾无终止符则补一个（中文「。！？」，日文同理）
     const end = text.slice(-1);
     const enders = lang.startsWith("zh") ? "。！？!?" : "。！？!?";
     if (!enders.includes(end)) return text + (lang.startsWith("zh") ? "。" : "。");
     return text;
   }
 
-  function writeToTextarea(text) {
-    if (!$ta) return;
+  function writeToInput(text) {
+    const $input = getEl(INPUT_SELECTOR);
+    if (!$input) return;
+    const val = $input.value ?? "";
     if (APPEND_MODE) {
-      const sep = $ta.value && !/\s$/.test($ta.value) ? " " : "";
-      $ta.value = $ta.value + sep + text;
+      const sep = val && !/\s$/.test(val) ? " " : "";
+      $input.value = val + sep + text;
     } else {
-      $ta.value = text;
+      $input.value = text;
     }
-    // 触发你现有的监听逻辑
-    $ta.focus();
-    $ta.setSelectionRange($ta.value.length, $ta.value.length);
-    $ta.dispatchEvent(new Event("input", { bubbles: true }));
-    $ta.dispatchEvent(new Event("change", { bubbles: true }));
+    // 触发你已有监听
+    $input.focus?.();
+    const len = $input.value.length;
+    $input.setSelectionRange?.(len, len);
+    $input.dispatchEvent(new Event("input",{bubbles:true}));
+    $input.dispatchEvent(new Event("change",{bubbles:true}));
   }
 
-  async function toggle() {
-    ensureInstance();
-    if (!recognition) return;
-    try {
-      if (!listening) {
-        finalBuffer = "";
-        recognition.start();
-      } else {
-        recognition.stop();
+  function triggerSubmit() {
+    // 方案A：调用你的全局函数
+    if (CALL_CUSTOM_SUBMIT_FN && typeof window[CALL_CUSTOM_SUBMIT_FN] === "function") {
+      try { window[CALL_CUSTOM_SUBMIT_FN](); return; } catch(e){ console.warn(e); }
+    }
+    // 方案B：模拟点击发送按钮
+    const $send = getEl(SEND_BTN_SELECTOR);
+    if ($send) { $send.click(); }
+  }
+
+  function main() {
+    ensureBasicUI();
+
+    const $input = getEl(INPUT_SELECTOR);
+    if (!$input) {
+      console.warn("[speech-addon] 找不到输入框：", INPUT_SELECTOR);
+      return; // 不破坏其他逻辑
+    }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      if ($btn){ $btn.disabled = true; $btn.title = "此浏览器不支持语音输入"; }
+      setStatus("音声非対応");
+      return;
+    }
+
+    let rec = null, listening = false, finalBuffer = "";
+
+    function newRec() {
+      const r = new SR();
+      const lang = $langSel?.value || LANG_DEFAULT;
+      r.lang = lang;
+      r.continuous = CONTINUOUS;
+      r.interimResults = INTERIM;
+      r.maxAlternatives = 1;
+
+      r.onstart = () => {
+        listening = true;
+        setPressed(true);
+        setStatus(lang.startsWith("zh") ? "聆听中…（再次点击停止）" : "傾聴中…（もう一度クリックで停止）");
+      };
+
+      r.onresult = (ev) => {
+        let interim = "";
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const res = ev.results[i];
+          const text = res[0]?.transcript || "";
+          if (res.isFinal) finalBuffer += text;
+          else if (INTERIM) interim += text;
+        }
+        if (INTERIM && interim) setStatus((r.lang.startsWith("zh")?"临时: ":"暫定: ")+sanitize(interim));
+      };
+
+      r.onerror = (e) => {
+        setStatus("错误/エラー: " + e.error);
+        setPressed(false);
+        listening = false;
+      };
+
+      r.onend = () => {
+        setPressed(false);
+        listening = false;
+        if (finalBuffer.trim()) {
+          const text = autoPunct(finalBuffer.trim(), r.lang);
+          finalBuffer = "";
+          writeToInput(text);
+          setStatus(r.lang.startsWith("zh") ? "识别结束" : "認識終了");
+          if (AUTO_CLICK_SEND_ON_END) triggerSubmit();
+        } else {
+          setStatus(r.lang.startsWith("zh") ? "待机中" : "待機中");
+        }
+      };
+      return r;
+    }
+
+    function ensureRec(){ if (!rec) rec = newRec(); }
+
+    $langSel?.addEventListener("change", () => {
+      if (listening) { try { rec?.stop(); } catch{} }
+      rec = newRec();
+      setStatus(($langSel.value||"").startsWith("zh") ? "已切换到中文" : "日本語に切替えました");
+    });
+
+    function toggle() {
+      ensureRec();
+      try {
+        if (!listening) { finalBuffer = ""; rec.start(); }
+        else { rec.stop(); }
+      } catch (err) {
+        setStatus("无法开始/開始できません: " + (err.message || err.name || "unknown"));
+        setPressed(false);
+        listening = false;
       }
-    } catch (err) {
-      setStatus("无法开始/開始できません: " + (err.message || err.name || "unknown"));
-      setPressed(false);
-      listening = false;
     }
+
+    $btn?.addEventListener("click", toggle);
+    window.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey||e.metaKey) && (e.key==="m"||e.key==="M")) { e.preventDefault(); toggle(); }
+    });
+
+    setStatus("待机中"); // 初始状态
   }
 
-  if ($btn) $btn.addEventListener("click", toggle);
-  // 快捷键：Ctrl/Cmd + M
-  window.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && (e.key === "m" || e.key === "M")) {
-      e.preventDefault();
-      toggle();
-    }
-  });
+  // 等 DOM ready，避免元素未渲染导致报错
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", main, {once:true});
+  } else {
+    main();
+  }
 })();
 </script>
 
