@@ -298,7 +298,16 @@ def render_playground_html() -> str:
           <label for="input">用中文描述你的场景</label>
           <textarea id="input"
             placeholder="例如：\n- 明天第一次去日本公司上班想自我介绍。\n- 孩子咳嗽一周了，想在医院说清楚。\n- 在大阪打工想学自然的关西ことば问候客人。"></textarea>
+          <label for="srLang" style="margin-right:6px;">音声言語</label>
+         <select id="srLang">
+         <option value="zh-CN" selected>中文（普通话, 中国）</option>
+         <option value="ja-JP">日本語（日本）</option>
+         </select>
 
+<button id="btnMic" type="button" aria-pressed="false" title="音声入力 (Ctrl+M)">🎤 语音输入</button>
+<small id="micStatus" style="margin-left:8px;color:#666">待机中</small>
+
+            
 <button id="send">发送给 ことの葉 ▶ 生成日语表达</button>
 <button id="speak" class="btn-secondary">🔊 朗读当前回复（需要已开通语音额度）</button>
 <button id="speak-local" class="btn-secondary">
@@ -322,239 +331,151 @@ def render_playground_html() -> str:
         </div>
       </div>
 
- <script>
-document.addEventListener('DOMContentLoaded', function () {
-  var chatEndpoint = "/agent/chat";
-  var ttsEndpoint = "/tts";
+<script>
+(() => {
+  // === 配置 ===
+  const TARGET_TEXTAREA_ID = "inputText"; // <- 改成你的输入框 id
+  const CONTINUOUS = false;               // 每次说完自动停止；想持续听写可改 true
+  const INTERIM = true;                   // 显示临时结果
+  const APPEND_MODE = false;              // true=追加；false=覆盖
 
-  var sendBtn = document.getElementById("send");
-  var speakBtn = document.getElementById("speak");
-  var speakLocalBtn = document.getElementById("speak-local");
-  var clearInputBtn = document.getElementById("clear-input");
-  var prevBtn = document.getElementById("prev-history");
-  var nextBtn = document.getElementById("next-history");
+  const $btn = document.getElementById("btnMic");
+  const $status = document.getElementById("micStatus");
+  const $ta = document.getElementById(TARGET_TEXTAREA_ID);
+  const $sel = document.getElementById("srLang");
 
-  var inputEl = document.getElementById("input");
-  var modeEl = document.getElementById("mode");
-  var replyEl = document.getElementById("reply");
-  var audioEl = document.getElementById("audio");
-
-  var history = [];     // { mode, input, reply }
-  var historyIndex = -1;
-  var localReadState = "idle"; // idle | playing | paused
-
-  // 只抽取【读音（平假名）】里的平假名来朗读
-  function extractHiraganaOnly(text) {
-    var parts = text.split("\\n");  // 注意这里是 \\n
-    var result = "";
-    var inReading = false;
-
-    for (var i = 0; i < parts.length; i++) {
-      var line = (parts[i] || "").trim();
-
-      // 命中“读音”/“平假名”标题，进入读音区（从下一行开始）
-      if (line.indexOf("读音") !== -1 || line.indexOf("平假名") !== -1) {
-        inReading = true;
-        continue;
-      }
-      // 在读音区内，遇到新【…】标题（且不含读音字样）则结束
-      if (inReading && line.indexOf("【") === 0 &&
-          line.indexOf("读音") === -1 && line.indexOf("平假名") === -1) {
-        break;
-      }
-      if (!inReading) continue;
-
-      // 只保留平假名和长音符号
-      var cleaned = line.replace(/[^ぁ-んー]+/g, "");
-      if (cleaned) result += cleaned + "。";
-    }
-    return result.trim();
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    if ($btn) { $btn.disabled = true; $btn.title = "此浏览器不支持语音输入"; }
+    if ($status) $status.textContent = "音声非対応";
+    return;
   }
 
-  function resetLocalSpeakButton() {
-    if (speakLocalBtn) {
-      speakLocalBtn.textContent = "📱 使用本机朗读（平假名示范发音）";
-    }
-  }
+  let recognition = null;
+  let listening = false;
+  let finalBuffer = "";
 
-  function stopLocalRead() {
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    localReadState = "idle";
-    resetLocalSpeakButton();
-  }
+  function newRecognizer() {
+    const rec = new SR();
+    rec.lang = ($sel && $sel.value) ? $sel.value : "zh-CN"; // 默认中文
+    rec.continuous = CONTINUOUS;
+    rec.interimResults = INTERIM;
+    rec.maxAlternatives = 1;
 
-  function updateHistoryButtons() {
-    if (!prevBtn || !nextBtn) return;
-    prevBtn.disabled = historyIndex <= 0;
-    nextBtn.disabled = historyIndex < 0 || historyIndex >= history.length - 1;
-  }
+    rec.onstart = () => {
+      listening = true;
+      setPressed(true);
+      setStatus(rec.lang.startsWith("zh") ? "聆听中…（再次点击停止）" : "傾聴中…（もう一度クリックで停止）");
+    };
 
-  function loadHistory(index) {
-    if (index < 0 || index >= history.length) return;
-    historyIndex = index;
-    var item = history[historyIndex];
-    if (modeEl) modeEl.value = item.mode;
-    if (inputEl) inputEl.value = item.input;
-    replyEl.textContent = item.reply;
-    if (audioEl) audioEl.removeAttribute("src");
-    stopLocalRead();
-    updateHistoryButtons();
-  }
-
-  // 发送
-  function send() {
-    var text = (inputEl && inputEl.value || "").trim();
-    if (!text) return;
-    var mode = modeEl ? modeEl.value : "daily";
-
-    replyEl.textContent = "考え中… / 正在为你组织最自然的表达…";
-    if (audioEl) audioEl.removeAttribute("src");
-    stopLocalRead();
-    if (sendBtn) sendBtn.disabled = true;
-
-    fetch(chatEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: "web-playground", mode: mode, message: text })
-    })
-    .then(function (res) { return res.json(); })
-    .then(function (data) {
-      var reply = data.reply || JSON.stringify(data, null, 2);
-      replyEl.textContent = reply;
-      history.push({ mode: mode, input: text, reply: reply });
-      historyIndex = history.length - 1;
-      updateHistoryButtons();
-    })
-    .catch(function (e) {
-      replyEl.textContent = "出错了，请稍后重试：" + e;
-    })
-    .finally(function () {
-      if (sendBtn) sendBtn.disabled = false;
-    });
-  }
-
-  // （可选）云端 TTS
-  function speak() {
-    if (!speakBtn) return;
-    var text = replyEl.textContent.trim();
-    if (!text) {
-      replyEl.textContent = "请先生成一条回复，再点击朗读。";
-      return;
-    }
-    speakBtn.disabled = true;
-    speakBtn.textContent = "语音生成中…";
-    fetch(ttsEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text, voice: "alloy" })
-    })
-    .then(function (res) {
-      if (!res.ok) return res.json().then(function (e) { throw e; });
-      return res.blob();
-    })
-    .then(function (blob) {
-      if (blob instanceof Blob && audioEl) {
-        var url = URL.createObjectURL(blob);
-        audioEl.src = url;
-        audioEl.play();
+    rec.onend = () => {
+      setPressed(false);
+      listening = false;
+      if (finalBuffer.trim()) {
+        // 可选：自动补句号（中文/日文简单处理）
+        const text = autoPunct(finalBuffer.trim(), rec.lang);
+        writeToTextarea(text);
+        finalBuffer = "";
+        setStatus(rec.lang.startsWith("zh") ? "识别结束" : "認識終了");
       } else {
-        replyEl.textContent = "语音生成失败：权限或额度问题。";
+        setStatus(rec.lang.startsWith("zh") ? "待机中" : "待機中");
       }
-    })
-    .catch(function (e) {
-      var msg = (e && e.detail) ? e.detail : (e.status || "") + " " + (e.message || "");
-      replyEl.textContent = "语音请求出错：" + msg;
-    })
-    .finally(function () {
-      speakBtn.disabled = false;
-      speakBtn.textContent = "🔊 朗读当前回复（需要已开通语音额度）";
+    };
+
+    rec.onresult = (ev) => {
+      let interim = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const res = ev.results[i];
+        const text = res[0] && res[0].transcript ? res[0].transcript : "";
+        if (res.isFinal) finalBuffer += text;
+        else if (INTERIM) interim += text;
+      }
+      if (INTERIM && interim) setStatus((rec.lang.startsWith("zh") ? "临时: " : "暫定: ") + sanitize(interim));
+    };
+
+    rec.onerror = (e) => {
+      setStatus("错误/エラー: " + e.error);
+      setPressed(false);
+      listening = false;
+    };
+
+    return rec;
+  }
+
+  function ensureInstance() {
+    if (!recognition) recognition = newRecognizer();
+  }
+
+  // 语言切换时，重建识别器（若正在听，先停）
+  if ($sel) {
+    $sel.addEventListener("change", () => {
+      if (listening && recognition) try { recognition.stop(); } catch {}
+      recognition = newRecognizer();
+      setStatus($sel.value.startsWith("zh") ? "已切换到中文" : "日本語に切替えました");
     });
   }
 
-  // 本机朗读：只读平假名；播放 → 暂停 → 继续
-  function speakLocal() {
-    if (!window.speechSynthesis) {
-      replyEl.textContent = "当前浏览器不支持本机语音朗读功能，请尝试用系统浏览器或电脑打开。";
-      return;
+  function setPressed(on) {
+    if ($btn) {
+      $btn.setAttribute("aria-pressed", String(on));
+      $btn.style.background = on ? "rgba(0,128,255,.08)" : "";
+      $btn.style.borderColor = on ? "dodgerblue" : "";
     }
+  }
+  function setStatus(msg) { if ($status) $status.textContent = msg; }
+  function sanitize(s) { return s.replace(/\s+/g, " ").trim(); }
 
-    if (localReadState === "playing") {
-      window.speechSynthesis.pause();
-      localReadState = "paused";
-      if (speakLocalBtn) speakLocalBtn.textContent = "▶ 继续本机朗读";
-      return;
+  function autoPunct(text, lang) {
+    // 简单规则：末尾无终止符则补一个（中文「。！？」，日文同理）
+    const end = text.slice(-1);
+    const enders = lang.startsWith("zh") ? "。！？!?" : "。！？!?";
+    if (!enders.includes(end)) return text + (lang.startsWith("zh") ? "。" : "。");
+    return text;
+  }
+
+  function writeToTextarea(text) {
+    if (!$ta) return;
+    if (APPEND_MODE) {
+      const sep = $ta.value && !/\s$/.test($ta.value) ? " " : "";
+      $ta.value = $ta.value + sep + text;
+    } else {
+      $ta.value = text;
     }
+    // 触发你现有的监听逻辑
+    $ta.focus();
+    $ta.setSelectionRange($ta.value.length, $ta.value.length);
+    $ta.dispatchEvent(new Event("input", { bubbles: true }));
+    $ta.dispatchEvent(new Event("change", { bubbles: true }));
+  }
 
-    if (localReadState === "paused") {
-      window.speechSynthesis.resume();
-      localReadState = "playing";
-      if (speakLocalBtn) speakLocalBtn.textContent = "⏸ 暂停本机朗读";
-      return;
-    }
-
-    var raw = replyEl.textContent.trim();
-    if (!raw) {
-      replyEl.textContent = "请先生成一条日语回复，再点击本机朗读。";
-      return;
-    }
-
-    var hira = extractHiraganaOnly(raw);
-    if (!hira) {
-      replyEl.textContent = "当前回复中没有可朗读的平假名内容，请确认已生成带读音的回复。";
-      return;
-    }
-
-    stopLocalRead(); // 先清理之前的
-    var utter = new SpeechSynthesisUtterance(hira);
-    utter.lang = "ja-JP";
-
-    var voices = window.speechSynthesis.getVoices();
-    for (var i = 0; i < voices.length; i++) {
-      var v = voices[i];
-      if (v.lang && v.lang.toLowerCase().indexOf("ja") === 0) {
-        utter.voice = v; break;
+  async function toggle() {
+    ensureInstance();
+    if (!recognition) return;
+    try {
+      if (!listening) {
+        finalBuffer = "";
+        recognition.start();
+      } else {
+        recognition.stop();
       }
+    } catch (err) {
+      setStatus("无法开始/開始できません: " + (err.message || err.name || "unknown"));
+      setPressed(false);
+      listening = false;
     }
-
-    localReadState = "playing";
-    if (speakLocalBtn) speakLocalBtn.textContent = "⏸ 暂停本机朗读";
-
-    utter.onend = function () { localReadState = "idle"; resetLocalSpeakButton(); };
-    utter.onerror = function () { localReadState = "idle"; resetLocalSpeakButton(); };
-
-    window.speechSynthesis.speak(utter);
   }
 
-  // 清空输入
-  function clearInput() {
-    if (inputEl) inputEl.value = "";
-    stopLocalRead();
-  }
-
-  // 历史导航
-  function showPrev() { if (historyIndex > 0) loadHistory(historyIndex - 1); }
-  function showNext() { if (historyIndex >= 0 && historyIndex < history.length - 1) loadHistory(historyIndex + 1); }
-
-  // 事件绑定
-  if (sendBtn) sendBtn.addEventListener("click", send);
-  if (speakBtn) speakBtn.addEventListener("click", speak);
-  if (speakLocalBtn) speakLocalBtn.addEventListener("click", speakLocal);
-  if (clearInputBtn) clearInputBtn.addEventListener("click", clearInput);
-  if (prevBtn) prevBtn.addEventListener("click", showPrev);
-  if (nextBtn) nextBtn.addEventListener("click", showNext);
-  if (inputEl) {
-    inputEl.addEventListener("keydown", function (e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); send(); }
-    });
-  }
-
-  // 初始化
-  if (window.speechSynthesis) window.speechSynthesis.getVoices();
-  updateHistoryButtons();
-});
+  if ($btn) $btn.addEventListener("click", toggle);
+  // 快捷键：Ctrl/Cmd + M
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "m" || e.key === "M")) {
+      e.preventDefault();
+      toggle();
+    }
+  });
+})();
 </script>
+
 
 
 
