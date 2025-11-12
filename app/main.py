@@ -1052,6 +1052,136 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 })();
 </script>
+<script>
+(() => {
+  // ——可按需改的参数——
+  const IOS_JA_PREF = ["Kyoko","Otoya","Siri"]; // iOS 常见更自然日语
+  const IOS_ZH_PREF = ["Ting","Siri"];          // iOS 常见中文（Ting-Ting 等）
+  const AND_JA_PREF = ["Google 日本語"];        // Android Google TTS
+  const AND_ZH_PREF = ["Google 普通话","Google Mandarin","Google 中国"];
+  const JA_RATE = 1.02, ZH_RATE = 1.0; // 语速建议
+  const PITCH = 1.0, VOL = 1.0;
+
+  const isIOS = /iP(hone|ad|od)/i.test(navigator.userAgent);
+
+  // ——文本预处理（专为日语读音）——
+  function toJaFriendlyText(raw) {
+    let t = (raw || "").normalize("NFKC");
+    t = t.replace(/[,，]/g,"、")
+         .replace(/[.．。]{1,}/g,"。")
+         .replace(/[!！]{1,}/g,"！")
+         .replace(/[?？]{1,}/g,"？")
+         .replace(/[:：]/g,"、").replace(/[;；]/g,"、")
+         .replace(/\s+/g," ").replace(/ /g,"、")
+         .replace(/・/g,"・").replace(/ｰ/g,"ー")
+         .replace(/、{2,}/g,"、").replace(/。{2,}/g,"。");
+    if (!/[。！？]$/.test(t)) t += "。";
+    return t;
+  }
+  function splitChunks(t, hardLen=80) {
+    const first = t.split(/(?<=[。！？])/);
+    const out = [];
+    for (const seg of first) {
+      const s = seg.trim();
+      if (!s) continue;
+      if (s.length > hardLen && s.includes("、")) {
+        const parts = s.split("、");
+        parts.forEach((p,i)=>{ const q=p.trim(); if(q) out.push(i<parts.length-1?q+"、":q); });
+      } else out.push(s);
+    }
+    return out;
+  }
+
+  function waitVoicesReady(timeoutMs=2000) {
+    return new Promise(resolve=>{
+      const now = speechSynthesis.getVoices();
+      if (now && now.length) return resolve(now);
+      let done=false;
+      const timer=setTimeout(()=>{ if(!done){done=true;resolve(speechSynthesis.getVoices());}}, timeoutMs);
+      speechSynthesis.onvoiceschanged = ()=>{ if(!done){done=true;clearTimeout(timer);resolve(speechSynthesis.getVoices());}};
+      speechSynthesis.getVoices();
+    });
+  }
+
+  function pickVoice(lang, voices, prefs=[]) {
+    const list = voices || speechSynthesis.getVoices() || [];
+    // 精确 lang + 名称偏好
+    const p1 = list.find(v => v.lang === lang && prefs.some(k => (v.name||"").includes(k)));
+    if (p1) return p1;
+    // 精确 lang
+    const p2 = list.find(v => v.lang === lang);
+    if (p2) return p2;
+    // 前缀 lang
+    const pre = lang.split("-")[0];
+    const p3 = list.find(v => (v.lang||"").toLowerCase().startsWith(pre));
+    return p3 || list[0] || null;
+  }
+
+  function detectLang(text) {
+    const t = (text||"").trim();
+    if (!t) return "zh-CN";
+    const hasJa = /[\u3040-\u309F\u30A0-\u30FF\u31F0-\u31FF]/.test(t);
+    if (hasJa) return "ja-JP";
+    const han = (t.match(/[\u4E00-\u9FFF]/g)||[]).length;
+    return han >= Math.max(2, t.length*0.1) ? "zh-CN" : "zh-CN";
+  }
+
+  async function speakChunks(chunks, lang, rate) {
+    if (!chunks.length) return;
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+
+    const voices = await waitVoicesReady();
+    // 平台定制化的“偏好名称”
+    const prefs = (lang==="ja-JP")
+      ? (isIOS ? IOS_JA_PREF : AND_JA_PREF)
+      : (isIOS ? IOS_ZH_PREF : AND_ZH_PREF);
+    const v = pickVoice(lang, voices, prefs);
+
+    let i=0;
+    const play = () => {
+      if (i >= chunks.length) return;
+      const u = new SpeechSynthesisUtterance(chunks[i++]);
+      if (v) u.voice = v;
+      u.lang = v?.lang || lang;
+      u.rate = rate;
+      u.pitch = PITCH;
+      u.volume = VOL;
+      // iOS 某些版本需要在 onend 里串行，否则丢句
+      u.onend = () => play();
+      u.onerror = e => console.warn("[mobile-tts]", e.error || e.name || e);
+      speechSynthesis.speak(u);
+    };
+    play();
+  }
+
+  // ——导出两个函数——
+  // 1) 专读【读音】：固定日语、预处理、分句
+  async function speakPronunciationJaMobile(text){
+    const pre = toJaFriendlyText(text||"");
+    const chunks = splitChunks(pre, 60);  // 移动端更短更稳
+    await speakChunks(chunks, "ja-JP", JA_RATE);
+  }
+  // 2) 一般文本：自动判中/日
+  async function speakSmartMobile(text){
+    const t = (text||"").trim(); if(!t) return;
+    const lang = detectLang(t);
+    if (lang==="ja-JP"){
+      const pre = toJaFriendlyText(t);
+      return speakChunks(splitChunks(pre, 80), "ja-JP", JA_RATE);
+    } else {
+      // 中文这边不做重写，直接分句
+      const chunks = t.replace(/[,，]/g,"，").replace(/[.．。]{1,}/g,"。")
+                      .replace(/[!！]{1,}/g,"！").replace(/[?？]{1,}/g,"？")
+                      .split(/(?<=[。！？])/).map(s=>s.trim()).filter(Boolean);
+      return speakChunks(chunks, "zh-CN", ZH_RATE);
+    }
+  }
+
+  // 暴露
+  window.speakPronunciationJaMobile = speakPronunciationJaMobile;
+  window.speakSmartMobile = speakSmartMobile;
+})();
+</script>
 
 
 
