@@ -908,6 +908,150 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 </script>
 
+<script>
+(() => {
+  // ——日语读音专用：强制 ja-JP、假名安全、分句停顿——
+
+  // 可按需调整
+  const JA_RATE   = 1.02;  // 稍慢更清晰
+  const JA_PITCH  = 1.0;
+  const JA_VOLUME = 1.0;
+
+  // 优先选择更自然的日语 voice 名称关键字（Edge/Chrome 免费可用）
+  const JAPANESE_PREF_NAMES = [
+    "Microsoft Haruka", "Microsoft Ayumi", "Microsoft Nanami",
+    "Google 日本語", "Google 日本语"
+  ];
+
+  function toJaFriendlyText(raw) {
+    if (!raw) return "";
+    // 1) 统一到全角（含半角片假名→全角）与规范形
+    let t = raw.normalize("NFKC");
+
+    // 2) 英文标点→日文标点，加入合理停顿
+    t = t
+      .replace(/[,，]/g, "、")
+      .replace(/[.．。]{1,}/g, "。")
+      .replace(/[!！]{1,}/g, "！")
+      .replace(/[?？]{1,}/g, "？")
+      // 括号前后加轻微停顿
+      .replace(/（/g, "（")
+      .replace(/）/g, "）")
+      // 冒号/分号→停顿
+      .replace(/[:：]/g, "、")
+      .replace(/[;；]/g, "、");
+
+    // 3) 连续空白→单空格；空格转为小停顿（读音里常见空格）
+    t = t.replace(/\s+/g, " ");
+    t = t.replace(/ /g, "、");
+
+    // 4) 规范中点与长音
+    t = t.replace(/・/g, "・").replace(/ｰ/g, "ー");
+
+    // 5) 去掉多余停顿
+    t = t.replace(/、{2,}/g, "、").replace(/。{2,}/g, "。");
+
+    // 6) 句末补句点
+    if (!/[。！？]$/.test(t)) t += "。";
+    return t;
+  }
+
+  function splitJaChunks(t) {
+    // 依据「。！？」「；、」等切块，避免一次性很长导致发音奇怪
+    const parts = t.split(/(?<=[。！？])/);
+    // 再把极长段落用顿号再切一层
+    const chunks = [];
+    for (const p of parts) {
+      const s = p.trim();
+      if (!s) continue;
+      if (s.length > 40 && s.includes("、")) {
+        s.split("、").forEach((q, i, arr) => {
+          const q2 = q.trim();
+          if (q2) chunks.push(i < arr.length - 1 ? (q2 + "、") : q2);
+        });
+      } else {
+        chunks.push(s);
+      }
+    }
+    return chunks;
+  }
+
+  function waitVoicesReady(timeoutMs = 2000) {
+    return new Promise(resolve => {
+      const now = speechSynthesis.getVoices();
+      if (now && now.length) return resolve(now);
+      let done = false;
+      const timer = setTimeout(() => { if (!done) { done = true; resolve(speechSynthesis.getVoices()); } }, timeoutMs);
+      speechSynthesis.onvoiceschanged = () => {
+        if (!done) { done = true; clearTimeout(timer); resolve(speechSynthesis.getVoices()); }
+      };
+      speechSynthesis.getVoices(); // 触发加载
+    });
+  }
+
+  function pickJapaneseVoice(voices) {
+    const list = voices || speechSynthesis.getVoices() || [];
+    // 1) 精确 ja-JP 且名称匹配偏好
+    const p1 = list.find(v => v.lang === "ja-JP" && JAPANESE_PREF_NAMES.some(k => (v.name||"").includes(k)));
+    if (p1) return p1;
+    // 2) 仅按 ja-JP
+    const p2 = list.find(v => v.lang === "ja-JP");
+    if (p2) return p2;
+    // 3) 语言前缀 ja-*
+    const p3 = list.find(v => (v.lang||"").toLowerCase().startsWith("ja"));
+    if (p3) return p3;
+    // 4) 兜底
+    return list[0] || null;
+  }
+
+  // ——对外函数：专读【读音】（片假名/平假名混合 OK）——
+  async function speakPronunciationJa(text) {
+    if (!("speechSynthesis" in window)) return;
+    const msg = String(text ?? "").trim();
+    if (!msg) return;
+
+    // 清理叠音
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+
+    // 预处理 & 分句
+    const prepared = toJaFriendlyText(msg);
+    const chunks = splitJaChunks(prepared);
+
+    const voices = await waitVoicesReady();
+    const voice = pickJapaneseVoice(voices);
+
+    // 逐句播报，保证停顿自然
+    let idx = 0;
+    const speakNext = () => {
+      if (idx >= chunks.length) return;
+      const u = new SpeechSynthesisUtterance(chunks[idx++]);
+      if (voice) u.voice = voice;
+      u.lang   = voice?.lang || "ja-JP";
+      u.rate   = JA_RATE;
+      u.pitch  = JA_PITCH;
+      u.volume = JA_VOLUME;
+      u.onerror = e => console.warn("[pron-ja] error:", e.error || e.name || e);
+      u.onend = () => speakNext();
+      speechSynthesis.speak(u);
+    };
+    speakNext();
+  }
+
+  // 暴露到全局，供你在“朗读【读音】”按钮或流程里调用
+  window.speakPronunciationJa = speakPronunciationJa;
+
+  // ——（可选）如果你有【读音】的 DOM，可直接挂按钮——
+  // 给读音容器加 data-pron-text="true"，给按钮加 id="btnPronTTS"
+  const btn = document.querySelector("#btnPronTTS");
+  const pronEl = document.querySelector('[data-pron-text="true"]');
+  if (btn && pronEl) {
+    btn.addEventListener("click", () => {
+      const text = ("value" in pronEl) ? pronEl.value : (pronEl.innerText || pronEl.textContent || "");
+      speakPronunciationJa(text);
+    });
+  }
+})();
+</script>
 
 
 
