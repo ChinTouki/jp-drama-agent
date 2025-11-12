@@ -771,6 +771,142 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 </script>
 
+<script>
+// ====== Smart TTS (zh/ja) - free, local voices, safe attach ======
+(() => {
+  // ——可选：你的朗读按钮与文本来源——
+  const BTN_TTS_SELECTOR = "#btnTTS";      // 若有“本机朗读”按钮，改成你的选择器；没有可留空
+  const INPUT_SELECTOR  = '[data-tts-target="true"], [data-sr-target="true"], #inputText, #userInput, textarea, input[type="text"]';
+  // ——默认参数——
+  const DEFAULT_RATE   = 1.0;   // 语速 0.1~10
+  const DEFAULT_PITCH  = 1.0;   // 音高 0~2
+  const DEFAULT_VOLUME = 1.0;   // 音量 0~1
+  const FALLBACK_LANG  = "zh-CN"; // 无法判断时默认中文
+
+  // 各语言优先候选（按名称包含关键字匹配，Edge 的 Microsoft * Natural 很好用）
+  const PREFS = {
+    "zh-CN": [
+      "Microsoft Xiaoxiao", "Microsoft Yunxi", "Microsoft Yunyang", // Edge
+      "Google 普通话", "Google Mandarin", "Google 中国"
+    ],
+    "ja-JP": [
+      "Microsoft Haruka", "Microsoft Ayumi", // Edge
+      "Google 日本語", "Google 日本语"
+    ]
+  };
+
+  // 语言检测：发现日文假名 → ja-JP；否则包含大量汉字→zh-CN；否则默认
+  function detectLang(text) {
+    const t = (text || "").trim();
+    if (!t) return FALLBACK_LANG;
+    const hasHiragana = /[\u3040-\u309F]/.test(t);
+    const hasKatakana = /[\u30A0-\u30FF\u31F0-\u31FF]/.test(t);
+    if (hasHiragana || hasKatakana) return "ja-JP";
+    const hanCount = (t.match(/[\u4E00-\u9FFF]/g) || []).length;
+    if (hanCount >= Math.max(2, t.length * 0.1)) return "zh-CN";
+    return FALLBACK_LANG;
+  }
+
+  // 等待系统 voices 就绪（Chrome/Edge 需要异步）
+  function waitVoicesReady(timeoutMs = 2000) {
+    return new Promise(resolve => {
+      const has = speechSynthesis.getVoices();
+      if (has && has.length) return resolve(has);
+      let done = false;
+      const timer = setTimeout(() => { if (!done) { done = true; resolve(speechSynthesis.getVoices()); } }, timeoutMs);
+      window.speechSynthesis.onvoiceschanged = () => {
+        if (!done) { done = true; clearTimeout(timer); resolve(speechSynthesis.getVoices()); }
+      };
+      // 触发一次加载
+      speechSynthesis.getVoices();
+    });
+  }
+
+  function pickBestVoice(lang, voices) {
+    const list = voices || speechSynthesis.getVoices() || [];
+    if (!list.length) return null;
+    const prefs = PREFS[lang] || [];
+    // 1) 完整 lang 精确匹配 + 首选名称
+    const p1 = list.find(v => v.lang === lang && prefs.some(p => (v.name||"").includes(p)));
+    if (p1) return p1;
+    // 2) 完整 lang 精确匹配（不看名称）
+    const p2 = list.find(v => v.lang === lang);
+    if (p2) return p2;
+    // 3) 语言前缀匹配（如 zh-XX / ja-XX）
+    const base = lang.split("-")[0];
+    const p3 = list.find(v => (v.lang||"").toLowerCase().startsWith(base));
+    if (p3) return p3;
+    // 4) 兜底
+    return list[0];
+  }
+
+  // 核心朗读函数
+  async function speakSmart(text, opts = {}) {
+    if (!("speechSynthesis" in window)) {
+      console.warn("[smart-tts] 当前浏览器不支持 SpeechSynthesis");
+      return;
+    }
+    const msg = String(text ?? "").trim();
+    if (!msg) return;
+
+    // 避免叠音
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+
+    // 语言：优先显式传入，其次自动检测
+    const lang = opts.lang || detectLang(msg);
+
+    // 等待声音可用并挑选
+    const voices = await waitVoicesReady();
+    const voice = pickBestVoice(lang, voices);
+
+    const u = new SpeechSynthesisUtterance(msg);
+    if (voice) u.voice = voice;
+    u.lang   = voice?.lang || lang;
+    u.rate   = opts.rate   ?? DEFAULT_RATE;
+    u.pitch  = opts.pitch  ?? DEFAULT_PITCH;
+    u.volume = opts.volume ?? DEFAULT_VOLUME;
+
+    // 可选：更自然的小停顿（简单句读替换）
+    u.text = msg.replace(/([，、,])\s*/g, "$1 ").replace(/([。！？!?])\s*/g, "$1 ");
+
+    u.onerror = e => console.warn("[smart-tts] error:", e.error || e.name || e);
+    speechSynthesis.speak(u);
+  }
+
+  // ——对外暴露：window.speakSmart(text, {lang, rate, pitch, volume})——
+  window.speakSmart = speakSmart;
+
+  // ——如果页面有“朗读”按钮：点击朗读输入框里的内容——
+  function getInputEl() {
+    // 优先 data-tts/sr 标记；否则退化到常见输入框
+    const el = document.querySelector(INPUT_SELECTOR);
+    return el && isVisible(el) ? el : null;
+  }
+  function isVisible(el){
+    const s = getComputedStyle(el), r = el.getBoundingClientRect();
+    return s.display!=="none" && s.visibility!=="hidden" && r.width>0 && r.height>0;
+  }
+
+  function attachButton() {
+    const btn = document.querySelector(BTN_TTS_SELECTOR);
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      const el = getInputEl();
+      // contenteditable 也支持
+      const text = el ? (("value" in el) ? el.value : el.innerText || el.textContent || "") : "";
+      speakSmart(text);
+    });
+  }
+
+  // DOM ready 后挂载
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", attachButton, { once: true });
+  } else {
+    attachButton();
+  }
+
+})();
+</script>
 
 
 
