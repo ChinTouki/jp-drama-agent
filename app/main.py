@@ -279,11 +279,6 @@ textarea, #inputText{
   .btn{ width: 36px; padding: 0; justify-content: center; }
 }
 
-/* 需要就打开这些：哪个不用就写哪个 */
-#btnTTS { display: none !important; }         /* 使用本机朗读 */
-#btnReadReply { display: none !important; }   /* 朗读当前回复（如果也不用） */
-#btnPrev, #btnNext { display: none !important; } /* 上一条 / 下一条 */
-#btnClear { display: none !important; }       /* 清空输入 */
 
         .footer {
           margin-top: 8px;
@@ -313,6 +308,16 @@ textarea, #inputText{
           .reply-box { font-size: 12px; }
           .footer { font-size: 9px; }
         }
+
+        HIDE_TTS_CSS = """
+<style id="hide-tts-style">
+#btnTTS { display: none !important; }
+#btnReadReply { display: none !important; }
+#btnPrev, #btnNext { display: none !important; }
+#btnClear { display: none !important; }
+</style>
+"""
+
       </style>
     </head>
     <body>
