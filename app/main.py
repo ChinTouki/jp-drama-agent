@@ -1290,6 +1290,42 @@ document.addEventListener('DOMContentLoaded', function () {
   window.speakPronunciationJaIOS = speakPronunciationJaIOS;
 })();
 </script>
+<script>
+// ===== Disable Local TTS (hard kill switch) =====
+(() => {
+  // 1) 标记：全局开关（有需要可在未来再打开）
+  window.USE_LOCAL_TTS = false;
+
+  // 2) 把所有可能的朗读函数置为 no-op（不报错、不发声）
+  const noop = (..._) => { /* TTS disabled */ };
+  const fns = [
+    "speakSmart", "speakSmartMobile",
+    "speakPronunciationJa", "speakPronunciationJaMobile", "speakPronunciationJaIOS",
+    "speakPronunciationJaAuto", "speakSmartAuto"
+  ];
+  fns.forEach(name => { try { window[name] = noop; } catch {} });
+
+  // 3) 禁用/隐藏相关按钮（按你之前的ID/数据属性来）
+  const sels = [
+    "#btnTTS", "#btnPronTTS",    // 你页面里加过的朗读按钮
+    "[data-tts-btn]", "[data-pron-tts-btn]"
+  ];
+  sels.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      el.disabled = true;
+      el.style.pointerEvents = "none";
+      el.style.opacity = "0.4";
+      el.title = "朗读功能已关闭";
+      // 如需直接不显示，改为：el.style.display = "none";
+    });
+  });
+
+  // 4) 如果你在代码里有“自动朗读”的调用，做保护性短路
+  // 只要未来误调用，也不会有任何副作用：
+  window.maybeSpeakSmart = noop;
+  window.maybeSpeakPronJa = noop;
+})();
+</script>
 
 
 
