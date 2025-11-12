@@ -23,168 +23,6 @@ client = OpenAI(
 )
 
 app = FastAPI()
-# ===== FastAPI: 在 /playground 注入 UI CSS（仅改 main.py） =====
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, Response
-
-app = FastAPI()  # 如果你的文件里已有 app，就不要重复创建
-
-# ===== FastAPI / Starlette：对 /playground 的 HTML 注入 CSS（稳健版） =====
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-from starlette.templating import _TemplateResponse  # TemplateResponse 的内部类型
-from fastapi import Request
-
-UI_CSS = """
-<style id="ui-compact-style">
-html,body{height:100%;}
-body{display:flex;flex-direction:column;min-height:100vh;}
-.app,.container,.chat,main{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
-.messages,.chat-messages,#messages{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 12px;}
-.composer,.input-area,.footer,footer{
-  position:sticky;bottom:0;background:rgba(255,255,255,.95);
-  backdrop-filter:saturate(1.2) blur(2px);border-top:1px solid #e5e7eb;
-  padding:8px 10px;
-}
-textarea, input[type="text"], .input, #inputText {
-  min-height:72px; max-height:40vh; resize:vertical;
-  font-size:15px; line-height:1.5; padding:10px 12px;
-}
-.toolbar, .actions, .button-row{
-  display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:6px;
-}
-.toolbar .btn, .actions .btn, .button-row .btn,
-#btnMic,#btnSend,#btnReadReply,#btnTTS,#btnClear,#btnPrev,#btnNext{
-  padding:6px 8px; font-size:12px; line-height:1; height:32px; border-radius:8px;
-}
-#btnTTS,#btnReadReply,#btnPrev,#btnNext,#btnClear{
-  opacity:.85; border:1px solid #e5e7eb; background:#fff;
-}
-@media (max-width:900px){
-  .btn .label{display:none;}
-  .btn{width:36px;padding:0;justify-content:center;}
-}
-header{padding:6px 10px !important;}
-</style>
-"""
-
-# 如需顺便隐藏“本机朗读/平假名发音”按钮，保留下面这段；不想隐藏就把 HIDE_TTS_CSS 设为 ""。
-HIDE_TTS_CSS = """
-<style id="hide-tts-style">
-#btnTTS, #btnPronTTS, [data-tts-btn], [data-pron-tts-btn]{display:none!important;}
-</style>
-"""
-
-class InjectUIMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # 兼容尾斜杠：/playground 和 /playground/
-        path_ok = request.url.path.rstrip("/") == "/playground"
-        response = await call_next(request)
-
-        # 仅处理 HTML
-        ctype = (response.headers.get("content-type") or "").lower()
-        if not (path_ok and "text/html" in ctype):
-            return response
-
-        try:
-            # TemplateResponse 需要先 render 才有 body
-            if isinstance(response, _TemplateResponse) and not response.body:
-                await response.render()
-
-            # 把 body 全部读出（无论是普通 Response 还是 Streaming）
-            content = b""
-            if hasattr(response, "body"):
-                content = response.body or b""
-            if not content:
-                # 兼容 StreamingResponse：消费迭代器
-                async for chunk in response.body_iterator:
-                    content += chunk
-
-            html = content.decode(response.charset or "utf-8", errors="ignore")
-            inject = UI_CSS + HIDE_TTS_CSS  # 不想隐藏按钮：改成 inject = UI_CSS
-
-            # 安全地插入到 </head> 前；若无 head，则插到文首
-            low = html.lower()
-            idx = low.rfind("</head>")
-            new_html = (html[:idx] + inject + html[idx:]) if idx != -1 else (inject + html)
-
-            # 重新构造响应；去掉旧的 content-length，避免长度不一致
-            headers = dict(response.headers)
-            headers.pop("content-length", None)
-            return Response(
-                content=new_html,
-                status_code=response.status_code,
-                headers=headers,
-                media_type="text/html"
-            )
-        except Exception:
-            # 出错就返回原响应，避免影响页面
-            return response
-
-# 注册中间件（放在 app = FastAPI() 之后）
-app.add_middleware(InjectUIMiddleware)
-
-UI_CSS = """
-<style id="ui-compact-style">
-html,body{height:100%;}
-body{display:flex;flex-direction:column;min-height:100vh;}
-.app,.container,.chat,main{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
-.messages,.chat-messages,#messages{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 12px;}
-.composer,.input-area,.footer,footer{
-  position:sticky;bottom:0;background:rgba(255,255,255,.95);
-  backdrop-filter:saturate(1.2) blur(2px);border-top:1px solid #e5e7eb;
-  padding:8px 10px;
-}
-textarea, input[type="text"], .input, #inputText {
-  min-height:72px; max-height:40vh; resize:vertical;
-  font-size:15px; line-height:1.5; padding:10px 12px;
-}
-.toolbar, .actions, .button-row{
-  display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:6px;
-}
-.toolbar .btn, .actions .btn, .button-row .btn,
-#btnMic,#btnSend,#btnReadReply,#btnTTS,#btnClear,#btnPrev,#btnNext{
-  padding:6px 8px; font-size:12px; line-height:1; height:32px; border-radius:8px;
-}
-#btnTTS,#btnReadReply,#btnPrev,#btnNext,#btnClear{
-  opacity:.85; border:1px solid #e5e7eb; background:#fff;
-}
-@media (max-width:900px){
-  .btn .label{display:none;}
-  .btn{width:36px;padding:0;justify-content:center;}
-}
-header{padding:6px 10px !important;}
-</style>
-"""
-
-# 可选：隐藏“本机朗读”相关按钮（想保留就把这一整段置空 ""）
-HIDE_TTS_CSS = """
-<style id="hide-tts-style">
-#btnTTS, #btnPronTTS, [data-tts-btn], [data-pron-tts-btn]{display:none!important;}
-</style>
-"""
-
-@app.middleware("http")
-async def inject_css_for_playground(request: Request, call_next):
-  response: Response = await call_next(request)
-  # 只处理 /playground 且是 HTML
-  if request.url.path == "/playground" and isinstance(response, HTMLResponse):
-    try:
-      body = b""
-      async for chunk in response.body_iterator:
-        body += chunk
-      html = body.decode(response.charset or "utf-8", errors="ignore")
-
-      inject = UI_CSS + HIDE_TTS_CSS  # 不想隐藏朗读按钮，就改成 inject = UI_CSS
-      low = html.lower()
-      idx = low.rfind("</head>")
-      html = (html[:idx] + inject + html[idx:]) if idx != -1 else (inject + html)
-
-      # 重新构造响应
-      return HTMLResponse(content=html, status_code=response.status_code, headers=dict(response.headers))
-    except Exception:
-      return response
-  return response
 
 
 # ===== 每日免费额度（MVP） =====
@@ -382,6 +220,71 @@ def render_playground_html() -> str:
           font-size: 11px;
           line-height: 1.6;
         }
+
+        /* === 紧凑按钮 + 放大输入/回答（覆盖前面的默认样式）=== */
+
+/* 1) 按钮更瘦、留白更小 */
+button{
+  padding: 6px 10px;        /* 原先 padding 比较大 → 改小 */
+  font-size: 12px;          /* 字体更小更紧凑 */
+  height: 32px;             /* 统一高度，行高由浏览器算 */
+  margin-top: 4px;          /* 顶部间距更小 */
+  border-radius: 10px;      /* 圆角略小，视觉更利落 */
+}
+
+/* 如果你有“主按钮”（比如 语音输入 / 发送），可稍微大一点 */
+#btnMic, #btnSend{
+  padding: 8px 14px;
+  font-size: 13px;
+  height: 36px;
+}
+
+/* 二级按钮（朗读当前、使用本机朗读、上一条、下一条、清空）弱一点的样式 */
+#btnTTS, #btnReadReply, #btnPrev, #btnNext, #btnClear{
+  opacity: .85;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+/* 2) 输入框更大（如果你的输入是 textarea/#inputText） */
+textarea, #inputText{
+  min-height: 120px;        /* 原来太矮 → 拉高 */
+  max-height: 40vh;         /* 最多占 40% 视口高度，可拖拽 */
+  resize: vertical;         /* 允许竖向拖拽 */
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 10px 12px;
+}
+
+/* 3) 回答框更大、字更清晰 */
+.reply-box{
+  min-height: 160px;        /* 原来是 80px → 提升为 160px */
+  font-size: 13px;          /* 略放大可读性 */
+  line-height: 1.6;
+  overflow: auto;           /* 内容多时可滚动 */
+}
+
+/* 4) 按钮容器（如果有）允许换行，挤占更少垂直空间 */
+.toolbar, .actions, .button-row{
+  display: flex;
+  flex-wrap: wrap;          /* 自动换行 */
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+/* 5) 小屏时只显示图标（如果按钮里有 .label 文本容器） */
+@media (max-width: 900px){
+  .btn .label{ display:none; }
+  .btn{ width: 36px; padding: 0; justify-content: center; }
+}
+
+/* 需要就打开这些：哪个不用就写哪个 */
+#btnTTS { display: none !important; }         /* 使用本机朗读 */
+#btnReadReply { display: none !important; }   /* 朗读当前回复（如果也不用） */
+#btnPrev, #btnNext { display: none !important; } /* 上一条 / 下一条 */
+#btnClear { display: none !important; }       /* 清空输入 */
+
         .footer {
           margin-top: 8px;
           font-size: 8px;
