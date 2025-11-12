@@ -1382,6 +1382,61 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 </script>
 
+<script>
+// ===== Hard Disable Local TTS (no PWA) =====
+(() => {
+  // 关总开关
+  window.USE_LOCAL_TTS = false;
+
+  // 1) 把你页面里可能存在的朗读函数全部置空（不报错，不发声）
+  const noop = () => {};
+  [
+    "speakSmart","speakSmartMobile",
+    "speakPronunciationJa","speakPronunciationJaMobile","speakPronunciationJaIOS",
+    "speakPronunciationJaAuto","speakSmartAuto",
+    "maybeSpeakSmart","maybeSpeakPronJa"
+  ].forEach(n => { try { window[n] = noop; } catch {} });
+
+  // 2) 从根上拦：将 speechSynthesis 也“静音”
+  try {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel?.();
+      window.speechSynthesis.speak = noop;
+      window.speechSynthesis.cancel = noop;
+    }
+  } catch {}
+
+  // 3) 移除朗读按钮的绑定并禁用/隐藏
+  const killBtn = (el) => {
+    if (!el) return;
+    const clone = el.cloneNode(true);     // 克隆替换，清掉所有事件监听
+    el.replaceWith(clone);
+    clone.disabled = true;
+    clone.style.pointerEvents = "none";
+    clone.style.opacity = "0.4";
+    clone.style.display = "none";         // 想保留位置就注释掉这行
+    clone.title = "朗读功能已关闭";
+  };
+  const selectors = [
+    "#btnTTS", "#btnPronTTS",
+    "[data-tts-btn]", "[data-pron-tts-btn]",
+    "button[title*='朗读']", "button[title*='読み上げ']"
+  ];
+  selectors.forEach(sel => document.querySelectorAll(sel).forEach(killBtn));
+
+  // 4) 兜底：捕获点击，若仍有“朗读/発音/TTS”文案的按钮，阻止默认行为
+  window.addEventListener("click", (e) => {
+    const txt = (e.target?.textContent || "").trim();
+    if (/朗读|読み上げ|発音|TTS/i.test(txt)) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      console.warn("[TTS disabled] blocked click on:", txt);
+    }
+  }, true);
+
+  console.log("[TTS disabled] local TTS is fully disabled.");
+})();
+</script>
 
 
 
