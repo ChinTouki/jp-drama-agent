@@ -569,7 +569,7 @@ document.addEventListener('DOMContentLoaded', function () {
 // ========== Speech Input Add-on (safe, non-destructive) ==========
 (() => {
   // ---- 必填：改成你页面里真实的选择器 ----
-  const INPUT_SELECTOR = "#inputText";   // 你的输入框（如 textarea 或 input）的选择器
+  const INPUT_SELECTOR = "#input";   // 你的输入框（如 textarea 或 input）的选择器
   const SEND_BTN_SELECTOR = "#btnSend";  // 你的发送按钮选择器（可留空）
   const LANG_DEFAULT = "zh-CN";          // 默认中文（可切换 ja-JP）
 
