@@ -23,6 +23,74 @@ client = OpenAI(
 )
 
 app = FastAPI()
+# ===== FastAPI: 在 /playground 注入 UI CSS（仅改 main.py） =====
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, Response
+
+app = FastAPI()  # 如果你的文件里已有 app，就不要重复创建
+
+UI_CSS = """
+<style id="ui-compact-style">
+html,body{height:100%;}
+body{display:flex;flex-direction:column;min-height:100vh;}
+.app,.container,.chat,main{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+.messages,.chat-messages,#messages{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 12px;}
+.composer,.input-area,.footer,footer{
+  position:sticky;bottom:0;background:rgba(255,255,255,.95);
+  backdrop-filter:saturate(1.2) blur(2px);border-top:1px solid #e5e7eb;
+  padding:8px 10px;
+}
+textarea, input[type="text"], .input, #inputText {
+  min-height:72px; max-height:40vh; resize:vertical;
+  font-size:15px; line-height:1.5; padding:10px 12px;
+}
+.toolbar, .actions, .button-row{
+  display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:6px;
+}
+.toolbar .btn, .actions .btn, .button-row .btn,
+#btnMic,#btnSend,#btnReadReply,#btnTTS,#btnClear,#btnPrev,#btnNext{
+  padding:6px 8px; font-size:12px; line-height:1; height:32px; border-radius:8px;
+}
+#btnTTS,#btnReadReply,#btnPrev,#btnNext,#btnClear{
+  opacity:.85; border:1px solid #e5e7eb; background:#fff;
+}
+@media (max-width:900px){
+  .btn .label{display:none;}
+  .btn{width:36px;padding:0;justify-content:center;}
+}
+header{padding:6px 10px !important;}
+</style>
+"""
+
+# 可选：隐藏“本机朗读”相关按钮（想保留就把这一整段置空 ""）
+HIDE_TTS_CSS = """
+<style id="hide-tts-style">
+#btnTTS, #btnPronTTS, [data-tts-btn], [data-pron-tts-btn]{display:none!important;}
+</style>
+"""
+
+@app.middleware("http")
+async def inject_css_for_playground(request: Request, call_next):
+  response: Response = await call_next(request)
+  # 只处理 /playground 且是 HTML
+  if request.url.path == "/playground" and isinstance(response, HTMLResponse):
+    try:
+      body = b""
+      async for chunk in response.body_iterator:
+        body += chunk
+      html = body.decode(response.charset or "utf-8", errors="ignore")
+
+      inject = UI_CSS + HIDE_TTS_CSS  # 不想隐藏朗读按钮，就改成 inject = UI_CSS
+      low = html.lower()
+      idx = low.rfind("</head>")
+      html = (html[:idx] + inject + html[idx:]) if idx != -1 else (inject + html)
+
+      # 重新构造响应
+      return HTMLResponse(content=html, status_code=response.status_code, headers=dict(response.headers))
+    except Exception:
+      return response
+  return response
+
 
 # ===== 每日免费额度（MVP） =====
 FREE_LIMIT_PER_DAY = 10  # 每个 user_id 每天免费 5 条
