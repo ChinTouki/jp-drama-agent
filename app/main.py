@@ -682,7 +682,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const CONTINUOUS = false;              // true=持续听写
   const INTERIM = true;                  // true=状态栏显示临时结果
   const APPEND_MODE = false;             // true=在输入框末尾追加；false=覆盖
-  const AUTO_CLICK_SEND_ON_END = false;  // true=识别结束后自动点发送按钮
+  const AUTO_CLICK_SEND_ON_END = true;  // true=识别结束后自动点发送按钮
   const CALL_CUSTOM_SUBMIT_FN = "";      // 如果你有全局函数如 runAnalysis，则填 "runAnalysis"
 
   // ---- 麦克风 UI（若你已放置了按钮/下拉，保持相同 id 即可；没有就自动创建）----
