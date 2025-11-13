@@ -14,6 +14,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.templating import _TemplateResponse
 
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
+
+app = FastAPI()
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+@app.get("/", response_class=HTMLResponse)
+def root():
+    # Render 的健康检查常打根路径；301/302也可以，尽量快速返回
+    return RedirectResponse(url="/playground", status_code=302)
+
+
 # 本地加载 .env；Render 上使用环境变量
 load_dotenv()
 
