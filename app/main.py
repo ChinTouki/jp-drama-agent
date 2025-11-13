@@ -8,6 +8,12 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+from starlette.templating import _TemplateResponse
+
 # 本地加载 .env；Render 上使用环境变量
 load_dotenv()
 
@@ -24,6 +30,78 @@ client = OpenAI(
 
 app = FastAPI()
 
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+# ====== 注入 UI 优化 + PWA 标记（只作用于 /playground） ======
+UI_CSS = """
+<style id="ui-compact-style">
+/* 你可以把自己的最终版 UI CSS 粘到这里；先用一段安全默认以保证生效 */
+html,body{height:100%;}
+body{display:flex;flex-direction:column;min-height:100vh;background:#f6f7fb;color:#111827;}
+.app,.container,.chat,main{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;max-width:980px;margin:0 auto;width:100%;padding:8px 12px;box-sizing:border-box;}
+.messages,.chat-messages,#messages{flex:1 1 auto;min-height:40vh;overflow:auto;padding:12px;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 2px 12px rgba(17,24,39,0.04);}
+.composer,.input-area,.footer,footer{position:sticky;bottom:0;background:transparent;padding:10px 0 2px;}
+textarea,#inputText{width:100%;min-height:140px;max-height:45vh;resize:vertical;font-size:15px;line-height:1.6;padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;box-sizing:border-box;}
+.toolbar,.actions,.button-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;}
+button,.btn,#btnMic,#btnSend,#btnReadReply,#btnTTS,#btnClear,#btnPrev,#btnNext{padding:6px 10px;height:32px;font-size:12px;line-height:1;border-radius:10px;margin-top:2px;min-width:auto;}
+#btnMic,#btnSend{padding:8px 12px;height:34px;font-size:13px;font-weight:600;}
+#btnReadReply,#btnTTS,#btnPrev,#btnNext,#btnClear{border:1px solid #e5e7eb;background:#fff;color:#111827;opacity:.92;}
+@media (max-width:900px){.btn .label{display:none;}.btn{width:36px;padding:0;justify-content:center;}}
+</style>
+"""
+
+# —— PWA 相关标记注入到 <head> 中 —— 
+PWA_HEAD = """
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="theme-color" content="#111827">
+<link rel="icon" href="/static/icons/icon-192.png" sizes="192x192">
+<link rel="icon" href="/static/icons/icon-512.png" sizes="512x512">
+<!-- iOS 支持 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="JP Agent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+<script defer src="/static/register-sw.js"></script>
+"""
+
+class InjectUIMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        resp = await call_next(request)
+
+        # 仅处理 /playground（包含尾斜杠）
+        path_ok = request.url.path.rstrip("/") == "/playground"
+        ctype = (resp.headers.get("content-type") or "").lower()
+        if not (path_ok and "text/html" in ctype):
+            return resp
+
+        try:
+            # 模板响应需要先 render
+            if isinstance(resp, _TemplateResponse) and not resp.body:
+                await resp.render()
+
+            # 读取 body（兼容流式）
+            body = b""
+            if getattr(resp, "body", None):
+                body = resp.body
+            if not body:
+                async for chunk in resp.body_iterator:
+                    body += chunk
+
+            html = body.decode(resp.charset or "utf-8", errors="ignore")
+            inject = UI_CSS + PWA_HEAD
+
+            low = html.lower()
+            i = low.rfind("</head>")
+            new_html = (html[:i] + inject + html[i:]) if i != -1 else (inject + html)
+
+            headers = dict(resp.headers)
+            headers.pop("content-length", None)
+            return Response(new_html, status_code=resp.status_code, headers=headers, media_type="text/html")
+        except Exception:
+            return resp
+
+# 注册中间件
+app.add_middleware(InjectUIMiddleware)
 
 # ===== 每日免费额度（MVP） =====
 FREE_LIMIT_PER_DAY = 10  # 每个 user_id 每天免费 5 条
