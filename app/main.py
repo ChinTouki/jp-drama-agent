@@ -69,15 +69,22 @@ button,.btn,#btnMic,#btnSend,#btnReadReply,#btnTTS,#btnClear,#btnPrev,#btnNext{p
 PWA_HEAD = """
 <link rel="manifest" href="/static/manifest.webmanifest">
 <meta name="theme-color" content="#111827">
+
 <link rel="icon" href="/static/icons/icon-192.png" sizes="192x192">
 <link rel="icon" href="/static/icons/icon-512.png" sizes="512x512">
-<!-- iOS 支持 -->
+
+<!-- Android/一般移动端 -->
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- iOS 支持（虽然标 deprecated，但很多旧设备还认这个，可以留） -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="JP Agent">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
 <script defer src="/static/register-sw.js"></script>
 """
+
 
 class InjectUIMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
