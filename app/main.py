@@ -385,19 +385,7 @@ header{padding:4px 8px !important;}
             即时获得「日文句子＋平假名＋中文解释」，适合在手机浏览器中边看边学。
           </p>
 
-          <div class="tags">
-            <div class="tag">🏠 日常生活</div>
-            <div class="tag">🍣 餐厅・店铺・理发店</div>
-            <div class="tag">✈️ 旅行</div>
-            <div class="tag">💼 职场</div>
-            <div class="tag">🎓 留学</div>
-            <div class="tag">🏥 医院 & 孩子看病</div>
-            <div class="tag">👨‍👩‍👧 家长·亲子·老师</div>
-            <div class="tag">🏡 租房·邻里·手续</div>
-            <div class="tag">📺 动漫·日剧·综艺·游戏</div>
-            <div class="tag">🗣 安全八卦·关西ことば</div>
-          </div>
-
+        
           <label for="mode">选择人格 / モード</label>
           <select id="mode">
             <option value="daily">🏠 日常日语场景｜ことの葉デイリー</option>
