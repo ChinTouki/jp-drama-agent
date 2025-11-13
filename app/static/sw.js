@@ -1,6 +1,6 @@
 /* JP-Drama Agent SW v1.0.0 */
 const CACHE_VER = "v1.0.0";
-const APP_CACHE = `jp-agent-${CACHE_VER}`;
+const APP_CACHE = `kotoba-ha-${CACHE_VER}`;
 
 const APP_SHELL = [
   "/playground",
