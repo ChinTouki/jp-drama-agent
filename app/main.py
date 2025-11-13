@@ -435,6 +435,143 @@ header{padding:4px 8px !important;}
           </div>
         </div>
       </div>
+/* ===== JP-Drama Agent Final UI Pack ===== */
+
+/* 布局与容器 */
+:root{
+  --bg: #f6f7fb;
+  --card: #ffffff;
+  --text: #111827;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --primary: #111827; /* 深色主按钮渐变已存在就沿用 */
+}
+html,body{height:100%;}
+body{
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 居中主内容（如果已有容器，会被这条温和增强） */
+main, .app, .container, .chat{
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 8px 12px;
+  box-sizing: border-box;
+}
+
+/* 消息/回复区 */
+.messages, .chat-messages, #messages{
+  flex: 1 1 auto;
+  min-height: 40vh;           /* 让它视觉上占大头 */
+  overflow: auto;
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(17,24,39,0.04);
+}
+
+/* 单条回复盒（如果你保留了 .reply-wrap/.reply-box） */
+.reply-wrap{ margin-top: 10px; }
+.reply-label{
+  font-weight: 600; font-size: 12px; color: #374151;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.reply-label .sub{ font-size: 10px; color: #9ca3af; }
+.reply-box{
+  background: #fafbfc;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow: auto;
+  min-height: 140px;          /* 比原来更舒适的高度 */
+}
+
+/* 输入区域贴底、浮动卡片感 */
+.composer, .input-area, .footer, footer{
+  position: sticky; bottom: 0;
+  background: transparent; padding: 10px 0 2px;
+}
+.composer-inner, .input-card{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 10px;
+  box-shadow: 0 2px 12px rgba(17,24,39,0.04);
+}
+
+/* 输入框（#inputText 或 textarea） */
+textarea, #inputText{
+  width: 100%;
+  min-height: 140px;          /* 提升输入空间 */
+  max-height: 45vh;
+  resize: vertical;
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+/* 工具栏：按钮更“瘦”，自动换行 */
+.toolbar, .actions, .button-row{
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px;
+}
+
+/* 通用按钮瘦身（你原有的渐变主色保留） */
+button, .btn,
+#btnMic,#btnSend,#btnReadReply,#btnTTS,#btnClear,#btnPrev,#btnNext{
+  padding: 6px 10px;
+  height: 32px;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 10px;
+  margin-top: 2px;
+  min-width: auto;
+}
+
+/* 主按钮（语音输入/发送）稍大一点凸显主流程 */
+#btnMic,#btnSend{
+  padding: 8px 12px;
+  height: 34px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 二级动作弱化（若这些按钮仍保留） */
+#btnReadReply,#btnTTS,#btnPrev,#btnNext,#btnClear{
+  border: 1px solid var(--border);
+  background: #fff;
+  color: #111827;
+  opacity: .92;
+}
+
+/* 小屏优化：按钮只显示图标容器 .label 可隐藏（如有） */
+@media (max-width: 900px){
+  .btn .label{ display: none; }
+  .btn{ width: 36px; padding: 0; justify-content: center; }
+}
+
+/* 更友好的焦点态与 hover（无障碍） */
+button:focus-visible, textarea:focus-visible, #inputText:focus-visible{
+  outline: 2px solid #6366f1; outline-offset: 2px;
+}
+button:hover:not(:disabled){
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15,23,42,0.12);
+}
+
+/* 如果页面保留了任何“朗读/音频”相关的残留容器，再保险隐藏一下（可留可去） */
+.audio-wrap, .tts-wrap{ display:none !important; }
 
  <script>
 document.addEventListener('DOMContentLoaded', function () {
