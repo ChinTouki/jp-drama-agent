@@ -417,7 +417,6 @@ header{padding:4px 8px !important;}
 
             
 <button id="send">发送给 ことの葉 ▶ 生成日语表达</button>
-<button id="speak" class="btn-secondary">🔊 朗读当前回复（需要已开通语音额度）</button>
 
 
 <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
@@ -427,7 +426,7 @@ header{padding:4px 8px !important;}
 </div>
 
 <div id="reply" class="reply-box">这里会出现针对你场景的日语表达建议。</div>
-<audio id="audio" controls></audio>
+
 
 
           <div class="footer">
