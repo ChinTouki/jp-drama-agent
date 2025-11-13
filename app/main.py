@@ -365,6 +365,12 @@ button, .btn,
 /* 顶部栏也更薄一点（若存在） */
 header{padding:4px 8px !important;}
 
+/* 打开任意一行即可 */
+#btnPrev, #btnNext { display:none !important; }   /* 上一条/下一条 */
+#btnClear { display:none !important; }            /* 清空输入 */
+#btnReadReply { display:none !important; }        /* 朗读当前回复 */
+#btnTTS { display:none !important; }              /* 使用本机朗读 */
+
       </style>
     </head>
     <body>
