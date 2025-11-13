@@ -309,14 +309,61 @@ textarea, #inputText{
           .footer { font-size: 9px; }
         }
 
-        HIDE_TTS_CSS = """
-<style id="hide-tts-style">
-#btnTTS { display: none !important; }
-#btnReadReply { display: none !important; }
-#btnPrev, #btnNext { display: none !important; }
-#btnClear { display: none !important; }
-</style>
-"""
+        /* === 超紧凑：按钮更小、输入/回答更大 === */
+
+/* 让聊天区吃满，输入区贴底 */
+html,body{height:100%;}
+body{display:flex;flex-direction:column;min-height:100vh;}
+.app,.container,.chat,main{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+.messages,.chat-messages,#messages{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 12px;}
+
+/* 输入框更高 */
+textarea, #inputText{
+  min-height:140px;      /* 再抬高 */
+  max-height:45vh;       /* 允许更高 */
+  font-size:15px; line-height:1.6; padding:10px 12px;
+  resize:vertical;
+}
+
+/* 按钮区超紧凑 */
+.toolbar, .actions, .button-row{
+  display:flex; flex-wrap:wrap; gap:4px; align-items:center;
+  margin-top:4px; row-gap:4px;
+}
+
+/* 统一把所有按钮“瘦身” */
+button, .btn,
+#btnMic,#btnSend,#btnReadReply,#btnTTS,#btnClear,#btnPrev,#btnNext{
+  padding:4px 8px;
+  height:28px;
+  font-size:11px;
+  line-height:1;
+  border-radius:8px;
+  margin-top:2px;
+  min-width:auto;        /* 允许更窄 */
+}
+
+/* 主按钮（语音输入/发送）稍大一丁点以突出 */
+#btnMic,#btnSend{
+  padding:6px 10px;
+  height:30px;
+  font-size:12px;
+  font-weight:600;
+}
+
+/* 次要动作弱化（更不抢占视觉） */
+#btnReadReply,#btnTTS,#btnPrev,#btnNext,#btnClear{
+  border:1px solid #e5e7eb; background:#fff; opacity:.85;
+}
+
+/* 小屏或你想“图标化”：隐藏文字标签（若按钮内有 .label） */
+@media (max-width: 1100px){
+  .btn .label{display:none;}
+  .btn{width:32px; padding:0; justify-content:center;}
+}
+
+/* 顶部栏也更薄一点（若存在） */
+header{padding:4px 8px !important;}
 
       </style>
     </head>
