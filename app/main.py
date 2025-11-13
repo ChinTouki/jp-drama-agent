@@ -421,8 +421,8 @@ header{padding:4px 8px !important;}
 
 <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
   <button id="clear-input" class="btn-secondary" style="flex:1;">🧹 清空输入</button>
-  <button id="prev-history" class="btn-secondary" style="flex:1;">←← 上一条</button>
-  <button id="next-history" class="btn-secondary" style="flex:1;">下一条 →→⋙</button>
+  <button id="prev-history" class="btn-secondary" style="flex:1;">⋘ 上一条</button>
+  <button id="next-history" class="btn-secondary" style="flex:1;">下一条 ⋙</button>
 </div>
 
 <div id="reply" class="reply-box">这里会出现针对你场景的日语表达建议。</div>
