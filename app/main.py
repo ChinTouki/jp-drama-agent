@@ -365,11 +365,7 @@ button, .btn,
 /* 顶部栏也更薄一点（若存在） */
 header{padding:4px 8px !important;}
 
-/* 打开任意一行即可 */
-#btnPrev, #btnNext { display:none !important; }   /* 上一条/下一条 */
-#btnClear { display:none !important; }            /* 清空输入 */
-#btnReadReply { display:none !important; }        /* 朗读当前回复 */
-#btnTTS { display:none !important; }              /* 使用本机朗读 */
+
 
       </style>
     </head>
@@ -391,7 +387,7 @@ header{padding:4px 8px !important;}
             <option value="daily">🏠 日常日语场景｜ことの葉デイリー</option>
             <option value="service">🍣 店铺服务场景｜ことの葉サービストーク</option>
             <option value="travel">✈️ 旅行日语向导｜ことの葉トラベル</option>
-            <option value="office">💼 职场敬语与汇报｜ことの葉オフィス先輩</option>
+            <option value="office">💼 职场敬语与汇报｜ことの葉オフィス/option>
             <option value="campus">🎓 留学与校园场景｜ことの葉キャンパスナビ</option>
             <option value="medical">🏥 医院就诊 & 儿科沟通｜ことの葉メディカル会話</option>
             <option value="family">👨‍👩‍👧 家长 & 学校沟通｜ことの葉ファミリーサポート</option>
@@ -422,9 +418,7 @@ header{padding:4px 8px !important;}
             
 <button id="send">发送给 ことの葉 ▶ 生成日语表达</button>
 <button id="speak" class="btn-secondary">🔊 朗读当前回复（需要已开通语音额度）</button>
-<button id="speak-local" class="btn-secondary">
-  📱 使用本机朗读（平假名示范发音）
-</button>
+
 
 <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
   <button id="clear-input" class="btn-secondary" style="flex:1;">🧹 清空输入</button>
